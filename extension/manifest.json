@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "ScamShield",
+  "version": "0.1.0",
+  "description": "Automatically flags likely scam/phishing messages in Gmail and WhatsApp Web before you read them closely.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "http://localhost:5090/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://mail.google.com/*"],
+      "js": ["content-gmail.js"],
+      "css": ["styles.css"]
+    },
+    {
+      "matches": ["https://web.whatsapp.com/*"],
+      "js": ["content-whatsapp.js"],
+      "css": ["styles.css"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  }
+}

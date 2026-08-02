@@ -1,0 +1,22 @@
+.scamshield-badge {
+  display: inline-block;
+  margin: 6px 0;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  cursor: help;
+}
+
+.scamshield-scam {
+  background: #fde8e8;
+  color: #c0152f;
+  border: 1px solid #f5b5b5;
+}
+
+.scamshield-suspicious {
+  background: #fff4e5;
+  color: #a15c00;
+  border: 1px solid #ffd9a0;
+}

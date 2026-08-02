@@ -1,0 +1,10 @@
+# .NET
+Api/bin/
+Api/obj/
+*.user
+
+# Local secrets (real key lives in dotnet user-secrets, never here)
+Api/appsettings.Development.json
+
+# OS cruft
+.DS_Store
