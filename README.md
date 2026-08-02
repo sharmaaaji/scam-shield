@@ -64,7 +64,22 @@ extension/                    Chrome extension (Manifest V3)
 ├── content-whatsapp.js       watches WhatsApp Web's incoming-message DOM
 ├── styles.css                badge styling
 └── popup.html / popup.js     lets you point the extension at a different API URL
+
+eval/                         accuracy evaluation (see eval/README.md)
+├── dataset.json              100 labeled messages, incl. 25 scam-lookalike negatives
+└── run_eval.py               harness: precision/recall/false-positive breakdown
 ```
+
+## Accuracy
+
+A 100-message labeled test set lives in [`eval/`](eval/), built so that 25 of the
+50 legitimate messages are deliberate scam-lookalikes (real bank OTPs, transaction
+alerts, delivery links, urgent promos) — because the number that decides whether
+this is usable isn't the catch rate, it's the false-alarm rate on legitimate mail.
+
+**No accuracy numbers are claimed yet.** The first run exhausted the Gemini free
+tier's daily quota partway through; see [`eval/README.md`](eval/README.md) for
+methodology, the known bias in an author-written test set, and current status.
 
 ## Setup
 

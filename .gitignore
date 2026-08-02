@@ -8,3 +8,6 @@ Api/appsettings.Development.json
 
 # OS cruft
 .DS_Store
+
+# Eval run output (regenerated per run; the dataset itself IS tracked)
+eval/results.json
