@@ -276,6 +276,24 @@
     }
 
     let lastReportedCount = -1;
+    const watched = new WeakSet();
+
+    // Classify only what the user can actually see. An inbox can hold 50+ rows
+    // while a screen shows maybe 12, and every off-screen row would otherwise
+    // cost an on-device inference the user never benefits from. Messages are
+    // analysed as they scroll into view instead.
+    const visibility = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          visibility.unobserve(entry.target);
+          handle(entry.target);
+        }
+      },
+      // A little margin so a message is usually ready by the time it is read,
+      // rather than resolving after the user has already looked at it.
+      { rootMargin: "300px 0px" }
+    );
 
     function scan() {
       let nodes = [];
@@ -299,7 +317,11 @@
         }
       }
 
-      nodes.forEach(handle);
+      for (const node of nodes) {
+        if (node.getAttribute(PROCESSED) || watched.has(node)) continue;
+        watched.add(node);
+        visibility.observe(node);
+      }
     }
 
     log(`${adapter.source} adapter loaded on ${location.host}`);

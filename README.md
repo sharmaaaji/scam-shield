@@ -71,8 +71,15 @@ The advice must be sound **whether or not** the message is really a scam, so bei
 wrong still leaves the reader safe.
 
 **The fast path may only ever return "safe".** It can never call something a scam on
-its own. Being wrong by escalating costs one inference call; being wrong by clearing
-a scam costs the user money.
+its own — every warning you see came from the model, never from Tier 0. Being wrong
+by escalating costs one inference call; being wrong by clearing a scam costs the user
+money.
+
+Messages are only classified once they scroll into view. An inbox may hold 50+ rows
+while a screen shows a dozen, and on a single on-device model every off-screen row
+would cost an inference the reader never benefits from. Tier-1 calls are also queued
+and run one at a time, because firing dozens concurrently at one local model starves
+them all.
 
 ### Measured on the 100-message test set
 
