@@ -96,18 +96,34 @@
     };
   }
 
+  // Chrome has relocated this API more than once (window.ai.languageModel ->
+  // self.ai.languageModel -> a top-level LanguageModel global), so resolve
+  // whichever surface this build exposes rather than assuming one.
+  function findLanguageModel() {
+    if (typeof LanguageModel !== "undefined") return LanguageModel;
+    if (typeof self !== "undefined" && self.ai && self.ai.languageModel) return self.ai.languageModel;
+    if (typeof window !== "undefined" && window.ai && window.ai.languageModel) return window.ai.languageModel;
+    return null;
+  }
+
   /** Is Chrome's built-in model usable right now? */
   async function onDeviceAvailability() {
-    if (typeof LanguageModel === "undefined") return "unsupported";
+    const api = findLanguageModel();
+    if (!api || typeof api.availability !== "function") return "unsupported";
     try {
-      return await LanguageModel.availability();
+      const state = await api.availability();
+      // Older builds answered "readily"; normalise to the current vocabulary.
+      return state === "readily" ? "available" : state;
     } catch (_) {
       return "unsupported";
     }
   }
 
   async function classifyOnDevice(text, signals, source) {
-    const session = await LanguageModel.create({
+    const api = findLanguageModel();
+    if (!api) throw new Error("Chrome's built-in AI is not available in this browser.");
+
+    const session = await api.create({
       initialPrompts: [{ role: "system", content: SYSTEM_PROMPT }],
       temperature: 0.1,
       topK: 3
@@ -127,6 +143,7 @@
     RESPONSE_SCHEMA,
     buildUserPrompt,
     parseResponse,
+    findLanguageModel,
     onDeviceAvailability,
     classifyOnDevice
   };
