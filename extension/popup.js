@@ -1,5 +1,10 @@
 const statusEl = document.getElementById("status");
 const requirementsEl = document.getElementById("requirements");
+const downloadBox = document.getElementById("downloadBox");
+const downloadBtn = document.getElementById("download");
+const progressWrap = document.getElementById("progressWrap");
+const progressBar = document.getElementById("bar");
+const progressText = document.getElementById("progressText");
 
 function render(cls, headline, detail, showRequirements) {
   if (!statusEl) return;
@@ -39,6 +44,46 @@ function withTimeout(promise, ms) {
     promise,
     new Promise((resolve) => setTimeout(() => resolve("__timeout__"), ms))
   ]);
+}
+
+function setupDownload(api) {
+  if (!downloadBox || !downloadBtn) return;
+  downloadBox.hidden = false;
+
+  downloadBtn.addEventListener("click", async () => {
+    downloadBtn.disabled = true;
+    downloadBtn.textContent = "Downloading…";
+    if (progressWrap) progressWrap.hidden = false;
+
+    try {
+      const session = await api.create({
+        monitor(m) {
+          m.addEventListener("downloadprogress", (e) => {
+            // e.loaded is 0..1 in current builds; guard in case it is bytes.
+            const pct = e.total ? (e.loaded / e.total) : e.loaded;
+            const shown = Math.max(0, Math.min(100, Math.round(pct * 100)));
+            if (progressBar) progressBar.style.width = shown + "%";
+            if (progressText) progressText.textContent = "Downloaded " + shown + "%";
+            console.log("[ScamShield] download progress", shown + "%");
+          });
+        }
+      });
+
+      // The session was created purely to pull the model down.
+      if (session && typeof session.destroy === "function") session.destroy();
+
+      downloadBox.hidden = true;
+      render("ok", "Active", "Analysis runs entirely on your device.", false);
+      console.log("[ScamShield] model download complete");
+    } catch (err) {
+      console.error("[ScamShield] download failed:", err);
+      downloadBtn.disabled = false;
+      downloadBtn.textContent = "Try again";
+      if (progressText) {
+        progressText.textContent = "Failed: " + String((err && err.message) || err);
+      }
+    }
+  });
 }
 
 (async () => {
@@ -101,11 +146,15 @@ function withTimeout(promise, ms) {
       case "after-download":
         render(
           "warn",
-          "Model not downloaded yet",
-          "Your device supports on-device AI, but the model isn't downloaded. " +
-            "Open Gmail or WhatsApp Web to trigger the download.",
+          "One step left",
+          "Your device supports on-device AI, but Chrome hasn't downloaded the model yet. " +
+            "Nothing can be checked until it does.",
           false
         );
+        // Downloading is only started by create(), never by availability(), and
+        // Chrome expects a user gesture before fetching several GB - so it has
+        // to be an explicit button rather than something the page does silently.
+        setupDownload(found.api);
         break;
 
       case "unavailable":

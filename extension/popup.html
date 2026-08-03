@@ -15,6 +15,14 @@
   .warn { background: #fff8e6; color: #8a5300; border-color: #ffe0a3; }
   .bad  { background: #fff1f0; color: #a40e26; border-color: #ffc9c9; }
 
+  button { width: 100%; margin-top: 12px; padding: 9px; font-size: 12.5px; font-weight: 600;
+           cursor: pointer; background: #1f6feb; color: #fff; border: 0; border-radius: 6px; }
+  button:disabled { background: #8c959f; cursor: default; }
+  .dlnote { font-size: 10.5px; color: #656d76; line-height: 1.5; margin: 7px 0 0; }
+  .bar { height: 6px; background: #eaecef; border-radius: 4px; overflow: hidden; margin-top: 10px; }
+  .bar > div { height: 100%; width: 0%; background: #1f6feb; transition: width .25s; }
+  #progressText { font-size: 11px; color: #656d76; margin-top: 5px; }
+
   .req { font-size: 11px; color: #656d76; margin-top: 12px; line-height: 1.55; }
   .req strong { color: #1f2328; }
   ul { margin: 6px 0 0; padding-left: 16px; }
@@ -29,6 +37,18 @@
 
   <div id="status" class="status warn">
     <span class="headline">Checking…</span>
+  </div>
+
+  <div id="downloadBox" hidden>
+    <button id="download">Download the AI model</button>
+    <p class="dlnote">
+      One-time download of a few GB, handled by Chrome. Needed before any
+      message can be checked. Keep this popup open while it runs.
+    </p>
+    <div id="progressWrap" hidden>
+      <div class="bar"><div id="bar"></div></div>
+      <div id="progressText">Starting…</div>
+    </div>
   </div>
 
   <div id="requirements" class="req" hidden>

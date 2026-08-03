@@ -122,10 +122,16 @@
       if (modelState === null) {
         modelState = await root.ScamShieldClassifier.onDeviceAvailability();
         log("on-device model:", modelState);
-        if (modelState !== "available") {
+        if (modelState === "downloadable" || modelState === "downloading") {
           log(
-            "Tier 1 disabled - no badges will appear. Tier 0 can only mark messages " +
-            "safe, never flag them. Check the extension popup for details."
+            "Model not ready yet (" + modelState + "). Open the ScamShield popup and " +
+            "press Download - the download only starts from an explicit user action, " +
+            "not from page activity. No messages are checked until it finishes."
+          );
+        } else if (modelState !== "available") {
+          log(
+            "Tier 1 disabled (" + modelState + ") - no warnings will appear. Tier 0 can " +
+            "only mark messages safe, never flag them. See the extension popup."
           );
         }
       }
