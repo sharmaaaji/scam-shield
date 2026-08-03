@@ -1,43 +1,125 @@
-.scamshield-badge {
+/* ScamShield
+   Sized and worded for a non-technical reader: high contrast, large type, the
+   action first, and nothing important hidden behind a hover. */
+
+.scamshield-alert {
+  all: initial;
   display: block;
-  margin: 8px 0;
-  padding: 8px 11px;
-  border-radius: 7px;
-  font-size: 12px;
-  line-height: 1.45;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  cursor: help;
-  max-width: 560px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  border-radius: 10px;
+  overflow: hidden;
+  margin: 12px 0 16px;
+  max-width: 640px;
+  border: 2px solid;
+  box-sizing: border-box;
 }
 
-.scamshield-label {
+.scamshield-alert .ss-head {
   display: block;
+  padding: 12px 15px;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.3;
+  color: #ffffff;
+}
+
+.scamshield-alert .ss-body {
+  display: block;
+  padding: 13px 15px;
+}
+
+/* The single most important line on screen. */
+.scamshield-alert .ss-action {
+  display: block;
+  font-size: 15px;
   font-weight: 700;
+  line-height: 1.45;
+  margin-bottom: 8px;
 }
 
-.scamshield-action {
+.scamshield-alert .ss-why {
   display: block;
-  margin-top: 3px;
-  font-weight: 400;
-  opacity: 0.92;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: #333333;
 }
 
-.scamshield-scam {
-  background: #fff1f0;
-  color: #a40e26;
-  border: 1px solid #ffc9c9;
+.scamshield-alert .ss-flags {
+  display: block;
+  margin: 8px 0 0;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #333333;
 }
 
-.scamshield-suspicious {
-  background: #fff8e6;
-  color: #8a5300;
-  border: 1px solid #ffe0a3;
+.scamshield-alert .ss-flags li {
+  display: list-item;
+  list-style: disc;
+  margin-bottom: 3px;
 }
+
+.scamshield-alert .ss-foot {
+  display: block;
+  padding: 9px 15px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #5a6169;
+  background: #ffffff;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+/* --- severity ------------------------------------------------------------ */
+
+.scamshield-alert.scamshield-scam { border-color: #c0152f; }
+.scamshield-alert.scamshield-scam .ss-head { background: #c0152f; }
+.scamshield-alert.scamshield-scam .ss-body { background: #fff5f5; }
+.scamshield-alert.scamshield-scam .ss-action { color: #a40e26; }
+
+.scamshield-alert.scamshield-suspicious { border-color: #b26a00; }
+.scamshield-alert.scamshield-suspicious .ss-head { background: #b26a00; }
+.scamshield-alert.scamshield-suspicious .ss-body { background: #fffaf0; }
+.scamshield-alert.scamshield-suspicious .ss-action { color: #8a5300; }
 
 /* Informational, not an accusation: the sender may well be genuine, but the
-   claimed identity cannot be verified from the message itself. */
-.scamshield-unverified-identity {
-  background: #eef4ff;
-  color: #1a4b8f;
-  border: 1px solid #c2d8ff;
+   claimed identity cannot be confirmed from the message itself. */
+.scamshield-alert.scamshield-unverified-identity { border-color: #1a4b8f; }
+.scamshield-alert.scamshield-unverified-identity .ss-head { background: #1a4b8f; }
+.scamshield-alert.scamshield-unverified-identity .ss-body { background: #f2f6fd; }
+.scamshield-alert.scamshield-unverified-identity .ss-action { color: #1a4b8f; }
+
+/* WhatsApp: the alert sits above a right-aligned bubble, so keep it left-aligned
+   and let it use the conversation width. */
+.scamshield-alert.scamshield-wa {
+  max-width: 92%;
+  margin: 10px auto 6px 8px;
+}
+
+/* --- inbox list marker --------------------------------------------------- */
+
+.scamshield-pill {
+  all: initial;
+  display: inline-block;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  color: #ffffff;
+  padding: 2px 8px;
+  border-radius: 20px;
+  margin-right: 7px;
+  vertical-align: middle;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.scamshield-pill.scamshield-scam { background: #c0152f; }
+.scamshield-pill.scamshield-suspicious { background: #b26a00; }
+.scamshield-pill.scamshield-unverified-identity { background: #1a4b8f; }
+
+/* Tint the whole row so it stands out while scanning the list, not only when
+   the small marker happens to be noticed. */
+tr.scamshield-row-flagged {
+  background: #fff5f5 !important;
+  box-shadow: inset 4px 0 0 #c0152f;
 }

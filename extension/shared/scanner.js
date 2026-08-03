@@ -8,43 +8,110 @@
 
   const PROCESSED = "data-scamshield";
 
+  // Wording is deliberately plain and action-first. The intended reader is not
+  // a developer - they should not have to hover anything, decode a confidence
+  // score, or know what "phishing" means to understand what to do next.
   const LABELS = {
-    scam: { icon: "⛔", text: "Likely scam" },
-    suspicious: { icon: "⚠️", text: "Suspicious" },
-    "unverified-identity": { icon: "ℹ️", text: "Unverified sender identity" }
+    scam: { icon: "⛔", headline: "This is probably a scam", short: "SCAM?" },
+    suspicious: { icon: "⚠️", headline: "Be careful with this message", short: "CAREFUL" },
+    "unverified-identity": { icon: "ℹ️", headline: "You can't be sure who sent this", short: "WHO?" }
   };
 
-  function renderBadge(result) {
+  const FOOTER =
+    "Checked privately on your device. This can be wrong — if you're unsure, ask someone you trust.";
+
+  /** Full alert panel, shown on an opened message. Nothing hidden behind hover. */
+  function renderAlert(result) {
     const meta = LABELS[result.verdict];
     if (!meta) return null;
 
-    const badge = document.createElement("div");
-    badge.className = "scamshield-badge scamshield-" + result.verdict;
+    const wrap = document.createElement("div");
+    wrap.className = "scamshield-alert scamshield-" + result.verdict;
 
-    const label = document.createElement("span");
-    label.className = "scamshield-label";
-    label.textContent = meta.icon + " " + meta.text;
-    badge.appendChild(label);
+    const head = document.createElement("div");
+    head.className = "ss-head";
+    head.textContent = meta.icon + "  " + meta.headline;
+    wrap.appendChild(head);
 
+    const body = document.createElement("div");
+    body.className = "ss-body";
+
+    // The single most important line, so it comes first and largest.
     if (result.recommendedAction) {
-      const action = document.createElement("span");
-      action.className = "scamshield-action";
+      const action = document.createElement("div");
+      action.className = "ss-action";
       action.textContent = result.recommendedAction;
-      badge.appendChild(action);
+      body.appendChild(action);
     }
 
-    const detail = [
-      result.reasoning,
-      result.redFlags && result.redFlags.length ? "\n\nRed flags:\n- " + result.redFlags.join("\n- ") : "",
-      "\n\n(" + (result.provider || result.tier || "local") +
-        ", confidence " + Number(result.confidence || 0).toFixed(2) + ")"
-    ].join("");
-    badge.title = detail;
+    if (result.reasoning) {
+      const why = document.createElement("div");
+      why.className = "ss-why";
+      why.textContent = result.reasoning;
+      body.appendChild(why);
+    }
 
-    return badge;
+    if (result.redFlags && result.redFlags.length) {
+      const list = document.createElement("ul");
+      list.className = "ss-flags";
+      for (const flag of result.redFlags.slice(0, 4)) {
+        const li = document.createElement("li");
+        li.textContent = flag;
+        list.appendChild(li);
+      }
+      body.appendChild(list);
+    }
+
+    wrap.appendChild(body);
+
+    const foot = document.createElement("div");
+    foot.className = "ss-foot";
+    foot.textContent = FOOTER;
+    wrap.appendChild(foot);
+
+    return wrap;
+  }
+
+  /** Compact marker for a list row, where a full panel would not fit. */
+  function renderPill(result) {
+    const meta = LABELS[result.verdict];
+    if (!meta) return null;
+
+    const pill = document.createElement("span");
+    pill.className = "scamshield-pill scamshield-" + result.verdict;
+    pill.textContent = meta.icon + " " + meta.short;
+    pill.title = meta.headline + (result.recommendedAction ? " — " + result.recommendedAction : "");
+    return pill;
   }
 
   const log = (...args) => console.log("[ScamShield]", ...args);
+
+  // Gmail recycles and rebuilds list rows constantly, so the same message text
+  // would otherwise be re-classified every time it re-renders. Cache by content
+  // so each distinct message costs at most one inference. In-memory only -
+  // nothing about the user's mail is persisted anywhere.
+  const resultCache = new Map();
+  const CACHE_LIMIT = 400;
+
+  function cacheKey(text) {
+    let hash = 0;
+    for (let i = 0; i < text.length; i++) {
+      hash = (hash << 5) - hash + text.charCodeAt(i);
+      hash |= 0;
+    }
+    return hash + ":" + text.length;
+  }
+
+  function cacheGet(text) {
+    return resultCache.get(cacheKey(text));
+  }
+
+  function cacheSet(text, result) {
+    if (resultCache.size >= CACHE_LIMIT) {
+      resultCache.delete(resultCache.keys().next().value);
+    }
+    resultCache.set(cacheKey(text), result);
+  }
 
   function createScanner(adapter) {
     // Checked once per page rather than per message; if the device cannot run
@@ -100,11 +167,22 @@
         return;
       }
 
-      let result;
+      let result = cacheGet(text);
+      if (result) {
+        log("cache hit - no inference needed");
+        element.setAttribute(PROCESSED, "done");
+        if (result.verdict !== "safe") {
+          const cached = adapter.style === "pill" ? renderPill(result) : renderAlert(result);
+          if (cached) adapter.attachBadge(element, cached);
+        }
+        return;
+      }
+
       try {
         result = await root.ScamShieldClassifier.classifyOnDevice(
           text, triaged.signals, adapter.source
         );
+        cacheSet(text, result);
       } catch (err) {
         // Fail quiet, never fail reassuring. Showing nothing is honest; showing
         // "safe" because the classifier broke would be actively harmful.
@@ -117,7 +195,7 @@
       log(`tier1 verdict: ${result.verdict} (${Number(result.confidence || 0).toFixed(2)})`);
       if (result.verdict === "safe") return;
 
-      const badge = renderBadge(result);
+      const badge = adapter.style === "pill" ? renderPill(result) : renderAlert(result);
       if (badge) adapter.attachBadge(element, badge);
     }
 
@@ -159,5 +237,5 @@
     scan();
   }
 
-  root.ScamShieldScanner = { createScanner, renderBadge };
+  root.ScamShieldScanner = { createScanner, renderAlert, renderPill };
 })(typeof globalThis !== "undefined" ? globalThis : this);

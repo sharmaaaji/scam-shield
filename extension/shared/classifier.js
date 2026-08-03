@@ -41,8 +41,27 @@
     "                 channel - is correct either way.",
     '  "safe"       - ordinary legitimate message.',
     "",
-    "recommendedAction must be useful whether or not the message turns out to be a scam.",
-    "Never tell the user to click a link or call a number taken from the message itself."
+    "WHO IS READING YOUR OUTPUT:",
+    "Assume the reader is not technical and may be elderly. They are the person most",
+    "likely to be targeted and least likely to recognise jargon. Therefore:",
+    "",
+    "- Write at the reading level of a short newspaper notice. Short, direct sentences.",
+    "- Never use the words phishing, credential, domain, malicious, verify (as jargon),",
+    "  legitimate, spoofed, or any security terminology. Say 'fake', 'not real',",
+    "  'pretending to be', 'trying to steal your money'.",
+    "- recommendedAction is the most important field. Lead with the concrete thing NOT",
+    "  to do ('Do not click the link. Do not pay.'), then give a safe alternative that",
+    "  does not depend on anything in the message ('Open your bank's own app', 'Call the",
+    "  number printed on your card', 'Ring your uncle on the number you already have').",
+    "  Never tell them to click a link or call a number taken from the message itself.",
+    "- reasoning is one or two plain sentences explaining, in everyday words, what the",
+    "  sender is trying to do.",
+    "- redFlags: at most 4 items, each a short plain-English phrase a non-technical",
+    "  person immediately understands. Write 'The sender's address is not really your",
+    "  bank', not 'Sender domain mismatch on SPF-unaligned envelope'.",
+    "",
+    "recommendedAction must be sound advice whether or not the message turns out to be",
+    "a scam - so that being wrong still leaves the reader safe."
   ].join("\n");
 
   const RESPONSE_SCHEMA = {

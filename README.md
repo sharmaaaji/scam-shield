@@ -46,8 +46,29 @@ message renders in Gmail / WhatsApp Web
 └─────────────────────────────────────────────────────────┘
         │
         ▼
-  badge rendered — only for non-safe verdicts
+  warning rendered — only for non-safe verdicts
 ```
+
+### Where the warning actually appears
+
+Designed for someone non-technical, possibly elderly — the person most likely to
+be targeted and least likely to decode a security warning.
+
+- **Gmail inbox list** — flagged rows are tinted with a coloured marker, so the
+  warning arrives *before* the message is opened. That's the moment that matters;
+  a warning shown only after opening arrives after they've started engaging.
+- **Opened message / WhatsApp chat** — a full-width panel above the message,
+  leading with the action in large type: *"Do not click the link. Do not pay."*
+  followed by a plain reason and up to four plain-English red flags.
+
+Nothing important is hidden behind a hover — older users don't discover tooltips.
+The model is instructed to avoid all security jargon ("phishing", "credential",
+"domain", "spoofed") and to give a safe alternative that doesn't depend on
+anything inside the message: open your bank's own app, call the number printed on
+your card, ring your uncle on the number you already have.
+
+The advice must be sound **whether or not** the message is really a scam, so being
+wrong still leaves the reader safe.
 
 **The fast path may only ever return "safe".** It can never call something a scam on
 its own. Being wrong by escalating costs one inference call; being wrong by clearing

@@ -51,6 +51,7 @@
 
   window.ScamShieldScanner.createScanner({
     source: "whatsapp",
+    style: "alert",
     minLength: 8,
     findMessages: () => Array.from(document.querySelectorAll(INCOMING_SELECTOR)),
     getText: (el) => {
@@ -58,6 +59,15 @@
       return node ? node.innerText : "";
     },
     getContext,
-    attachBadge: (el, badge) => el.appendChild(badge)
+    attachBadge: (bubble, alert) => {
+      // Insert as a sibling BEFORE the bubble rather than inside it. A chat
+      // bubble is narrow and right-aligned; a warning stuffed inside one is
+      // cramped and easy to scroll past. As a full-width block directly above
+      // the message, it is read before the message it refers to.
+      alert.classList.add("scamshield-wa");
+      const parent = bubble.parentElement;
+      if (parent) parent.insertBefore(alert, bubble);
+      else bubble.appendChild(alert);
+    }
   });
 })();
