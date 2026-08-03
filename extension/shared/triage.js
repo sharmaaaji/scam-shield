@@ -179,15 +179,29 @@
     return secondLast;
   }
 
+  // Real transactional mail very often has a generic sender name - DoNotReply,
+  // notifications, support, team. Those can never match a domain, so scoring
+  // them as "not aligned" would penalise exactly the mail most likely to be
+  // legitimate. They are reported as unknown (null) instead of false.
+  const GENERIC_SENDER_NAMES = [
+    "donotreply", "dontreply", "noreply", "nonreply", "notifications", "notification",
+    "info", "support", "admin", "alerts", "alert", "team", "mailer", "mail",
+    "service", "services", "updates", "update", "news", "newsletter", "hello",
+    "contact", "help", "customercare", "care", "billing", "accounts", "automated"
+  ];
+
   function detectDomainAlignment(displayName, domain) {
-    if (!displayName || !domain) return false;
+    if (!displayName || !domain) return null;
 
     const token = registrableName(domain);
-    if (!token || token.length < 3) return false;
+    if (!token || token.length < 3) return null;
     if (FREEMAIL.includes(String(domain).toLowerCase())) return false;
 
     const normalised = String(displayName).toLowerCase().replace(/[^a-z0-9]/g, "");
-    if (!normalised) return false;
+    if (!normalised) return null;
+
+    // No organisation is being claimed, so there is nothing to contradict.
+    if (GENERIC_SENDER_NAMES.includes(normalised)) return null;
 
     // Either the display name contains the domain's name ("Team BankBazaar" /
     // bankbazaar.com) or the domain contains the display name ("Render" /

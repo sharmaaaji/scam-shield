@@ -25,10 +25,21 @@
     "does NOT by itself make something a scam - legitimate banks, couriers and services",
     "send all of those every day.",
     "",
-    "The distinction that matters most:",
-    "- An OTP or code being DELIVERED TO the recipient is normal and legitimate.",
-    "- An OTP, PIN, CVV or password being REQUESTED FROM the recipient is always a scam.",
-    "  No real bank, company or government body ever asks for these.",
+    "Two distinctions matter more than anything else. Get these right:",
+    "",
+    "1. DELIVERED vs REQUESTED.",
+    "   An OTP or code being DELIVERED TO the recipient is normal and legitimate.",
+    "   An OTP, PIN, CVV or password being REQUESTED FROM the recipient is always a scam.",
+    "   No real bank, company or government body ever asks for these.",
+    "",
+    "2. A RECEIPT vs A DEMAND.",
+    "   A message reporting that a payment ALREADY HAPPENED - \"your payment was",
+    "   successfully processed\", \"INR 2000 paid\", \"here is your invoice\", \"your order is",
+    "   confirmed\" - is a receipt. Receipts are among the most common legitimate emails",
+    "   there are, and they are SAFE. Past tense and a completed amount are not a request.",
+    "   Only a message telling the recipient they must PAY, or must act to avoid a",
+    "   consequence, is a demand - and only demands can be scams of this kind.",
+    "   Do not describe a receipt as \"asking you to confirm a payment\". It is not.",
     "",
     "SENDER DOMAIN IS YOUR STRONGEST EVIDENCE:",
     "If 'sender domain matches the organisation it claims to be' is true, the mail really",
@@ -137,7 +148,10 @@
       `- Sender not in contacts: ${signals.senderIsUnknown}`,
       `- First message from this sender: ${signals.isFirstMessage}`,
       `- Display name claims a brand its domain does NOT match: ${signals.brandDomainMismatch}`,
-      `- Sender domain matches the organisation it claims to be: ${signals.senderDomainAligned}`
+      `- Sender domain matches the organisation it claims to be: ` +
+        (signals.senderDomainAligned === null
+          ? "unknown (generic sender name - do NOT hold this against the message)"
+          : String(signals.senderDomainAligned))
     ].join("\n");
   }
 
