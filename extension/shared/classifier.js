@@ -30,16 +30,26 @@
     "- An OTP, PIN, CVV or password being REQUESTED FROM the recipient is always a scam.",
     "  No real bank, company or government body ever asks for these.",
     "",
+    "DEFAULT TO SAFE. Most mail is legitimate. Ordinary business correspondence is safe",
+    "even when it mentions money, links, deadlines or accounts. All of the following are",
+    "SAFE unless they contain a specific fraud indicator:",
+    "  - payment receipts, invoices and order confirmations",
+    "  - job application acknowledgements and recruiter mail",
+    "  - newsletters, marketing offers and sale deadlines",
+    "  - account/security notifications from a company's own domain",
+    "  - delivery and booking confirmations",
+    "",
     "Verdicts:",
-    '  "scam"       - clear fraud indicators; recommend not engaging.',
-    '  "suspicious" - genuinely ambiguous, or pressure tactics without proof of fraud.',
-    '  "unverified-identity" - the sender CLAIMS a relationship or authority',
-    "                 (family member, bank, HR, government) that cannot be verified from",
-    "                 the message, typically with a new/unknown number. Use this instead",
-    "                 of \"scam\" when the message asks for nothing yet: it may well be",
-    "                 genuine, and the right advice - verify through a previously known",
-    "                 channel - is correct either way.",
-    '  "safe"       - ordinary legitimate message.',
+    '  "scam"       - clear, specific fraud indicators. Not a hunch.',
+    '  "suspicious" - real pressure tactics or a concrete inconsistency, but short of',
+    "                 proof. Do NOT use this merely because context is missing or a",
+    "                 message mentions money. Uncertainty alone is \"safe\".",
+    '  "unverified-identity" - ONLY for a person claiming a personal relationship or',
+    "                 authority that cannot be checked (a relative with a new number,",
+    "                 someone claiming to be from your bank or the police), where the",
+    "                 message asks for nothing yet. NEVER use this for automated mail",
+    "                 from a company - no-reply addresses, notifications, receipts.",
+    '  "safe"       - ordinary legitimate message. This should be your most common answer.',
     "",
     "WHO IS READING YOUR OUTPUT:",
     "Assume the reader is not technical and may be elderly. They are the person most",
@@ -78,8 +88,25 @@
 
   function buildUserPrompt(text, signals, source) {
     const list = (arr) => (arr && arr.length ? arr.join(", ") : "none");
+
+    // A list row is a sender line, a subject and a truncated snippet - far less
+    // than a full message. Without saying so, the model treats missing context
+    // as suspicious and flags ordinary receipts and confirmations.
+    const preview = source === "gmail-inbox";
+    const framing = preview
+      ? [
+          "INPUT TYPE: inbox list preview - sender, subject and a TRUNCATED snippet only.",
+          "You are seeing a fragment, not the whole message. Absence of detail is NOT",
+          "evidence of anything. Answer \"safe\" unless the fragment itself contains clear",
+          "evidence of fraud. A false alarm here is worse than a miss: it appears next to",
+          "ordinary mail and teaches the reader to ignore all warnings, including real ones."
+        ]
+      : ["INPUT TYPE: full message body."];
+
     return [
       `SOURCE: ${source || "unknown"}`,
+      ...framing,
+      "",
       "MESSAGE:",
       text,
       "",

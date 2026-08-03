@@ -12,9 +12,14 @@
   // a developer - they should not have to hover anything, decode a confidence
   // score, or know what "phishing" means to understand what to do next.
   const LABELS = {
-    scam: { icon: "⛔", headline: "This is probably a scam", short: "SCAM?" },
-    suspicious: { icon: "⚠️", headline: "Be careful with this message", short: "CAREFUL" },
-    "unverified-identity": { icon: "ℹ️", headline: "You can't be sure who sent this", short: "WHO?" }
+    scam: { icon: "⛔", headline: "This is probably a scam", short: "LIKELY SCAM" },
+    suspicious: { icon: "⚠️", headline: "Be careful with this message", short: "BE CAREFUL" },
+    // "WHO?" was too cryptic to act on. The label has to say what to do about it.
+    "unverified-identity": {
+      icon: "ℹ️",
+      headline: "You can't be sure who sent this",
+      short: "CHECK WHO SENT THIS"
+    }
   };
 
   const FOOTER =
@@ -70,6 +75,25 @@
     wrap.appendChild(foot);
 
     return wrap;
+  }
+
+  /**
+   * Whether a verdict is strong enough to put in front of the user.
+   *
+   * A list row carries only a subject and a truncated snippet, so a hedged
+   * "suspicious" there is usually the model reacting to missing context rather
+   * than to evidence. Showing those turns the inbox into a wall of warnings and
+   * teaches the reader to ignore all of them - including the real one. So rows
+   * demand a confident "scam"; the full message view, which has the whole text
+   * to reason over, keeps the lower bar.
+   */
+  function shouldWarn(result, adapter) {
+    if (!result || result.verdict === "safe" || result.verdict === "unknown") return false;
+
+    if (adapter.strictThreshold) {
+      return result.verdict === "scam" && Number(result.confidence || 0) >= 0.7;
+    }
+    return true;
   }
 
   /** Compact marker for a list row, where a full panel would not fit. */
@@ -244,7 +268,8 @@
         `tier1 verdict: ${result.verdict} (${Number(result.confidence || 0).toFixed(2)})` +
           ` | "${preview}…"`
       );
-      if (result.verdict === "safe") return;
+
+      if (!shouldWarn(result, adapter)) return;
 
       const badge = adapter.style === "pill" ? renderPill(result) : renderAlert(result);
       if (badge) adapter.attachBadge(element, badge);

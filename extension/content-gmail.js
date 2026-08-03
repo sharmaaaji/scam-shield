@@ -88,14 +88,22 @@
     // threshold is lower than for a full message body.
     minLength: 12,
     findMessages: () => Array.from(document.querySelectorAll(ROW_SELECTOR)),
+    // A row is a fragment - sender, subject, truncated snippet. Only a confident
+    // "scam" earns a marker here; hedged verdicts on partial text produce a wall
+    // of warnings next to ordinary mail and destroy trust in the real ones.
+    strictThreshold: true,
     getText: rowText,
     getContext: (row) => senderContext(row),
     attachBadge: (row, pill) => {
-      // Place the marker at the start of the row and tint the row itself, so it
-      // is visible while scanning the list rather than only on close reading.
-      const cell = row.querySelector("td.xY") || row.firstElementChild;
-      if (cell) cell.appendChild(pill);
-      else row.insertBefore(pill, row.firstChild);
+      // Sit inline immediately before the subject text. The sender cell is a
+      // fixed-width column, so injecting there overlapped the sender's name.
+      const subject = row.querySelector(SUBJECT_SELECTOR);
+      if (subject && subject.parentElement) {
+        subject.parentElement.insertBefore(pill, subject);
+      } else {
+        const cell = row.querySelector("td.xY") || row.firstElementChild;
+        if (cell) cell.appendChild(pill);
+      }
       row.classList.add("scamshield-row-flagged");
     }
   });
