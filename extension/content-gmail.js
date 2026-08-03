@@ -41,6 +41,9 @@
   window.ScamShieldScanner.createScanner({
     source: "gmail",
     style: "alert",
+    // A message body only exists while an email is open, so matching nothing on
+    // the list view is expected rather than a sign of a broken selector.
+    expectEmptyViews: true,
     minLength: 20,
     findMessages: () => Array.from(document.querySelectorAll(BODY_SELECTOR)),
     getText: (el) => el.innerText,

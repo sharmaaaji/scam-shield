@@ -113,6 +113,21 @@
     resultCache.set(cacheKey(text), result);
   }
 
+  // A single on-device model backs every request, so firing one inference per
+  // message concurrently (an inbox can escalate 40+ at once) thrashes it and
+  // starves everything behind it. Run them one at a time instead.
+  let queueTail = Promise.resolve();
+
+  function enqueue(job) {
+    const result = queueTail.then(job, job);
+    // Keep the chain alive even if a job rejects.
+    queueTail = result.then(
+      () => undefined,
+      () => undefined
+    );
+    return result;
+  }
+
   function createScanner(adapter) {
     // Cached so we don't re-query per message. "available" is terminal, but any
     // other state must be re-checked: the user may download the model while this
@@ -120,34 +135,47 @@
     // page permanently inert with no way back short of a reload.
     let modelState = null;
     let lastStateCheck = 0;
+    let inFlightCheck = null;
     const RECHECK_MS = 20000;
 
     async function ensureModelState() {
       const stale = Date.now() - lastStateCheck > RECHECK_MS;
       if (modelState === null || (modelState !== "available" && stale)) {
-        const previous = modelState;
-        modelState = await root.ScamShieldClassifier.onDeviceAvailability();
-        lastStateCheck = Date.now();
+        // Messages are handled concurrently, so without sharing the in-flight
+        // promise every one of them kicks off its own availability check and
+        // logs its own result - 40+ identical lines for one real question.
+        if (inFlightCheck) return inFlightCheck;
 
-        if (modelState !== previous) log("on-device model:", modelState);
-        if (previous && previous !== "available" && modelState === "available") {
-          log("model became available - re-scanning this page");
-          document.querySelectorAll("[" + PROCESSED + "='no-model']").forEach((el) =>
-            el.removeAttribute(PROCESSED)
-          );
-        }
-        if (modelState === "downloadable" || modelState === "downloading") {
-          log(
-            "Model not ready yet (" + modelState + "). Open the ScamShield popup and " +
-            "press Download - the download only starts from an explicit user action, " +
-            "not from page activity. No messages are checked until it finishes."
-          );
-        } else if (modelState !== "available") {
-          log(
-            "Tier 1 disabled (" + modelState + ") - no warnings will appear. Tier 0 can " +
-            "only mark messages safe, never flag them. See the extension popup."
-          );
-        }
+        inFlightCheck = (async () => {
+          const previous = modelState;
+          modelState = await root.ScamShieldClassifier.onDeviceAvailability();
+          lastStateCheck = Date.now();
+
+          if (modelState !== previous) log("on-device model:", modelState);
+          if (previous && previous !== "available" && modelState === "available") {
+            log("model became available - re-scanning this page");
+            document.querySelectorAll("[" + PROCESSED + "='no-model']").forEach((el) =>
+              el.removeAttribute(PROCESSED)
+            );
+          }
+          if (modelState === "downloadable" || modelState === "downloading") {
+            log(
+              "Model not ready yet (" + modelState + "). Open the ScamShield popup and " +
+              "press Download - the download only starts from an explicit user action, " +
+              "not from page activity. No messages are checked until it finishes."
+            );
+          } else if (modelState !== "available") {
+            log(
+              "Tier 1 disabled (" + modelState + ") - no warnings will appear. Tier 0 can " +
+              "only mark messages safe, never flag them. See the extension popup."
+            );
+          }
+
+          inFlightCheck = null;
+          return modelState;
+        })();
+
+        return inFlightCheck;
       }
       return modelState;
     }
@@ -199,8 +227,8 @@
       }
 
       try {
-        result = await root.ScamShieldClassifier.classifyOnDevice(
-          text, triaged.signals, adapter.source
+        result = await enqueue(() =>
+          root.ScamShieldClassifier.classifyOnDevice(text, triaged.signals, adapter.source)
         );
         cacheSet(text, result);
       } catch (err) {
@@ -238,8 +266,11 @@
       if (nodes.length !== lastReportedCount) {
         lastReportedCount = nodes.length;
         log(`found ${nodes.length} message element(s) via adapter "${adapter.source}"`);
-        if (nodes.length === 0) {
-          log("no matches - the DOM selector is probably stale for this layout");
+        // Zero matches is normal and expected for the opened-message adapter
+        // while the user is looking at a list, so don't cry stale-selector for
+        // an adapter that simply has nothing to do on the current view.
+        if (nodes.length === 0 && !adapter.expectEmptyViews) {
+          log("no matches - the DOM selector may be stale for this layout");
         }
       }
 

@@ -138,22 +138,43 @@
     }
   }
 
-  async function classifyOnDevice(text, signals, source) {
-    const api = findLanguageModel();
-    if (!api) throw new Error("Chrome's built-in AI is not available in this browser.");
+  // Creating a session per message is expensive - it re-primes the system
+  // prompt every time. Build one base session and clone it per classification,
+  // which is the documented pattern and keeps each request's context isolated
+  // so one message can never influence the verdict on the next.
+  let basePromise = null;
 
-    const session = await api.create({
-      initialPrompts: [{ role: "system", content: SYSTEM_PROMPT }],
-      temperature: 0.1,
-      topK: 3
-    });
+  function getBaseSession() {
+    if (!basePromise) {
+      const api = findLanguageModel();
+      if (!api) return Promise.reject(new Error("Chrome's built-in AI is not available."));
+      basePromise = api
+        .create({
+          initialPrompts: [{ role: "system", content: SYSTEM_PROMPT }],
+          // Chrome warns that omitting this degrades output quality and skips
+          // its output-safety attestation.
+          outputLanguage: "en",
+          temperature: 0.1,
+          topK: 3
+        })
+        .catch((err) => {
+          basePromise = null; // allow a later retry
+          throw err;
+        });
+    }
+    return basePromise;
+  }
+
+  async function classifyOnDevice(text, signals, source) {
+    const base = await getBaseSession();
+    const session = typeof base.clone === "function" ? await base.clone() : base;
     try {
       const raw = await session.prompt(buildUserPrompt(text, signals, source), {
         responseConstraint: RESPONSE_SCHEMA
       });
       return { ...parseResponse(raw), provider: "on-device" };
     } finally {
-      session.destroy();
+      if (session !== base && typeof session.destroy === "function") session.destroy();
     }
   }
 
