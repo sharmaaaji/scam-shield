@@ -4,50 +4,48 @@
 <meta charset="utf-8" />
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-         width: 320px; padding: 14px; margin: 0; color: #1f2328; }
+         width: 320px; padding: 16px; margin: 0; color: #1f2328; }
   h1 { font-size: 15px; margin: 0 0 2px; }
-  .sub { font-size: 11px; color: #656d76; margin: 0 0 12px; }
-  fieldset { border: 1px solid #d0d7de; border-radius: 6px; padding: 10px; margin: 0 0 12px; }
-  legend { font-size: 11px; font-weight: 600; padding: 0 4px; }
-  label { font-size: 12px; display: block; margin-bottom: 6px; cursor: pointer; }
-  input[type="text"], input[type="password"], select {
-    width: 100%; box-sizing: border-box; padding: 6px; font-size: 12px;
-    border: 1px solid #d0d7de; border-radius: 5px; margin-bottom: 8px; }
-  button { width: 100%; padding: 8px; font-size: 12px; cursor: pointer;
-           background: #1f6feb; color: #fff; border: 0; border-radius: 6px; font-weight: 600; }
-  #status { font-size: 11px; margin-top: 8px; min-height: 14px; color: #1a7f37; }
-  #availability { font-size: 11px; color: #656d76; margin-bottom: 8px; }
-  .note { font-size: 10px; color: #656d76; line-height: 1.45; margin-top: 10px; }
+  .sub { font-size: 11px; color: #656d76; margin: 0 0 14px; line-height: 1.45; }
+
+  .status { border-radius: 7px; padding: 10px 12px; font-size: 12px; line-height: 1.5;
+            border: 1px solid transparent; }
+  .status .headline { font-weight: 700; display: block; margin-bottom: 2px; }
+  .ok   { background: #eaf6ec; color: #1a7f37; border-color: #c3e6cb; }
+  .warn { background: #fff8e6; color: #8a5300; border-color: #ffe0a3; }
+  .bad  { background: #fff1f0; color: #a40e26; border-color: #ffc9c9; }
+
+  .req { font-size: 11px; color: #656d76; margin-top: 12px; line-height: 1.55; }
+  .req strong { color: #1f2328; }
+  ul { margin: 6px 0 0; padding-left: 16px; }
+  li { margin-bottom: 3px; }
+  .note { font-size: 10px; color: #656d76; line-height: 1.5; margin-top: 14px;
+          border-top: 1px solid #eaecef; padding-top: 10px; }
 </style>
 </head>
 <body>
   <h1>ScamShield</h1>
   <p class="sub">Flags likely scams in Gmail and WhatsApp Web.</p>
 
-  <fieldset>
-    <legend>Where analysis runs</legend>
-    <label><input type="radio" name="provider" value="auto" /> On-device, fall back to cloud</label>
-    <label><input type="radio" name="provider" value="on-device" /> On-device only (most private)</label>
-    <label><input type="radio" name="provider" value="byok-cloud" /> Cloud with my own API key</label>
-    <div id="availability">Checking on-device model…</div>
-  </fieldset>
+  <div id="status" class="status warn">
+    <span class="headline">Checking…</span>
+  </div>
 
-  <fieldset>
-    <legend>Your Gemini API key (cloud only)</legend>
-    <input id="apiKey" type="password" placeholder="AIza…" autocomplete="off" />
-    <p class="note" style="margin-top:0">
-      Stored only in this browser. Requests go straight from your browser to Google
-      using your key — they never pass through any server we operate.
-    </p>
-  </fieldset>
-
-  <button id="save">Save</button>
-  <div id="status"></div>
+  <div id="requirements" class="req" hidden>
+    <strong>On-device AI needs:</strong>
+    <ul>
+      <li>Chrome 138 or newer, on desktop</li>
+      <li>~22 GB free disk space</li>
+      <li>&gt;4 GB VRAM, or 16 GB RAM with 4+ cores</li>
+    </ul>
+  </div>
 
   <p class="note">
-    ScamShield never auto-deletes, blocks, or replies to anything. It only advises;
-    you decide. It can be wrong in both directions — treat it as a second opinion,
-    not a verdict.
+    Everything runs on your device. No message ever leaves your computer, and this
+    extension makes no network requests at all.
+    <br /><br />
+    It advises only — it never deletes, blocks, or replies to anything, and it can be
+    wrong in both directions. Treat it as a second opinion, not a verdict.
   </p>
 
   <script src="popup.js"></script>

@@ -1,52 +1,68 @@
 const statusEl = document.getElementById("status");
-const keyEl = document.getElementById("apiKey");
-const availabilityEl = document.getElementById("availability");
+const requirementsEl = document.getElementById("requirements");
 
-const DEFAULTS = { provider: "auto", apiKey: "", model: "gemini-flash-latest" };
+function render(cls, headline, detail, showRequirements) {
+  statusEl.className = "status " + cls;
+  statusEl.textContent = "";
 
-chrome.storage.local.get(Object.keys(DEFAULTS), (stored) => {
-  const settings = Object.assign({}, DEFAULTS, stored || {});
-  keyEl.value = settings.apiKey || "";
-  const radio = document.querySelector(`input[name="provider"][value="${settings.provider}"]`);
-  if (radio) radio.checked = true;
-});
+  const h = document.createElement("span");
+  h.className = "headline";
+  h.textContent = headline;
+  statusEl.appendChild(h);
 
-// The Prompt API is not exposed to the popup in every Chrome build, so report
-// what we can determine and stay vague rather than claiming something false.
+  if (detail) statusEl.appendChild(document.createTextNode(detail));
+  requirementsEl.hidden = !showRequirements;
+}
+
 (async () => {
-  try {
-    if (typeof LanguageModel === "undefined") {
-      availabilityEl.textContent =
-        "On-device model not detected here. Needs Chrome 138+ on desktop with ~22 GB free disk.";
-      return;
-    }
-    const state = await LanguageModel.availability();
-    const messages = {
-      available: "On-device model ready. Nothing leaves your machine.",
-      downloadable: "On-device model available but not downloaded yet (a few GB).",
-      downloading: "On-device model is downloading…",
-      unavailable: "This device cannot run the on-device model. Use a cloud API key."
-    };
-    availabilityEl.textContent = messages[state] || ("On-device model: " + state);
-  } catch (_) {
-    availabilityEl.textContent = "Could not determine on-device model status.";
-  }
-})();
-
-document.getElementById("save").addEventListener("click", () => {
-  const selected = document.querySelector('input[name="provider"]:checked');
-  const provider = selected ? selected.value : "auto";
-  const apiKey = keyEl.value.trim();
-
-  if (provider === "byok-cloud" && !apiKey) {
-    statusEl.style.color = "#cf222e";
-    statusEl.textContent = "Cloud mode needs an API key.";
+  if (typeof LanguageModel === "undefined") {
+    render(
+      "bad",
+      "Not active",
+      "Chrome's built-in AI isn't available here, so messages can't be analysed.",
+      true
+    );
     return;
   }
 
-  chrome.storage.local.set({ provider, apiKey, model: DEFAULTS.model }, () => {
-    statusEl.style.color = "#1a7f37";
-    statusEl.textContent = "Saved. Reload Gmail or WhatsApp Web to apply.";
-    setTimeout(() => (statusEl.textContent = ""), 2500);
-  });
-});
+  let state;
+  try {
+    state = await LanguageModel.availability();
+  } catch (_) {
+    render("bad", "Not active", "Couldn't determine the on-device model's status.", true);
+    return;
+  }
+
+  switch (state) {
+    case "available":
+      render("ok", "Active", "Analysis runs entirely on your device.", false);
+      break;
+
+    case "downloading":
+      render(
+        "warn",
+        "Model downloading",
+        "Chrome is still downloading the on-device model. Scanning starts once it finishes.",
+        false
+      );
+      break;
+
+    case "downloadable":
+      render(
+        "warn",
+        "Model not downloaded yet",
+        "Your device supports on-device AI, but Chrome hasn't downloaded the model. " +
+          "It downloads automatically on first use — open Gmail or WhatsApp Web to trigger it.",
+        false
+      );
+      break;
+
+    default:
+      render(
+        "bad",
+        "Not active",
+        "This device can't run the on-device model, so no messages are analysed.",
+        true
+      );
+  }
+})();

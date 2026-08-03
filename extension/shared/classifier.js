@@ -1,15 +1,18 @@
 /**
  * Tier-1 classifier: the model call, for messages Tier 0 could not resolve.
  *
- * Two providers, in preference order:
- *   1. on-device  - Chrome's built-in Gemini Nano (Prompt API). No key, no cost,
- *                   no network, and the message never leaves the machine.
- *   2. byok-cloud - the user's own Gemini API key, called directly from the
- *                   extension. Still no server of ours in the path.
+ * On-device only, via Chrome's built-in Gemini Nano (Prompt API). There is
+ * deliberately no cloud provider and no API-key option:
  *
- * There is deliberately no hosted-backend option. Routing other people's private
- * mail through a server we operate would make us a data processor for their
- * messages, which is the thing this design exists to avoid.
+ *   - the message physically cannot leave the machine, so there is nothing to
+ *     disclose, nothing to breach, and no data-processor role to take on;
+ *   - the extension makes no network requests at all, so it needs no host
+ *     permissions;
+ *   - there is nothing for the user to configure or get wrong.
+ *
+ * The cost of that choice is real: a device that cannot run the model gets no
+ * Tier-1 analysis whatsoever. We report that plainly rather than degrading into
+ * something that looks like it is working when it is not.
  */
 (function (root) {
   "use strict";
@@ -119,41 +122,12 @@
     }
   }
 
-  async function classifyByokCloud(text, signals, source, apiKey, model) {
-    const url =
-      "https://generativelanguage.googleapis.com/v1beta/models/" +
-      (model || "gemini-flash-latest") +
-      ":generateContent?key=" + encodeURIComponent(apiKey);
-
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [{ role: "user", parts: [{ text: buildUserPrompt(text, signals, source) }] }],
-        // Flash models reason internally and those tokens count against this
-        // budget; too low a value truncates the JSON mid-object.
-        generationConfig: {
-          maxOutputTokens: 2048,
-          responseMimeType: "application/json",
-          responseSchema: RESPONSE_SCHEMA
-        }
-      })
-    });
-
-    if (!response.ok) throw new Error("Gemini API error " + response.status);
-    const body = await response.json();
-    const raw = body?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-    return { ...parseResponse(raw), provider: "byok-cloud" };
-  }
-
   root.ScamShieldClassifier = {
     SYSTEM_PROMPT,
     RESPONSE_SCHEMA,
     buildUserPrompt,
     parseResponse,
     onDeviceAvailability,
-    classifyOnDevice,
-    classifyByokCloud
+    classifyOnDevice
   };
 })(typeof globalThis !== "undefined" ? globalThis : this);

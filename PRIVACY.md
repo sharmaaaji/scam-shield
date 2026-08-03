@@ -4,57 +4,50 @@ _Last updated: 4 August 2026_
 
 ## The short version
 
-ScamShield operates no server. Your messages are never transmitted to the developer,
-and no analytics, telemetry, or usage data is collected.
+ScamShield makes no network requests. Nothing you read is transmitted anywhere —
+not to the developer, not to Google, not to anyone. All analysis happens on your
+own device.
 
-## What the extension reads
+The extension requests **no Chrome permissions at all** beyond running on the two
+sites it supports.
+
+## What it reads
 
 On `mail.google.com` and `web.whatsapp.com` only, it reads the text of messages
 displayed on screen, plus limited sender metadata (the sender's email domain on
 Gmail; whether a chat is with a saved contact on WhatsApp Web). It reads nothing on
-any other site.
+any other website.
 
-## Where that text goes
+## What happens to that text
 
-Most messages are analysed entirely locally by pattern matching and never leave your
-device at all.
+Most messages are resolved by local pattern matching alone.
 
-Messages that show a potential risk signal are analysed by a language model, using
-whichever mode you selected:
+The rest are analysed by Chrome's built-in on-device AI model (Gemini Nano), which
+runs locally on your computer. No network request is made, and the message never
+leaves your device.
 
-**On-device (default).** Chrome's built-in Gemini Nano runs the analysis locally.
-The message does not leave your computer and no network request is made.
-
-**Your own API key (optional).** If you supply a Gemini API key, the message is sent
-from your browser directly to Google's Gemini API using your key. It does not pass
-through any server operated by the developer. That request is governed by
-[Google's Gemini API terms](https://ai.google.dev/gemini-api/terms) and your own
-account's data settings. Note that Google's *unpaid* tier permits Google to use
-submitted content to improve its products and to have it reviewed by humans; the paid
-tier does not. Choose accordingly.
+If your device cannot run the on-device model, no analysis happens and no badges
+appear. The extension's popup states this plainly rather than appearing to work.
 
 ## What is stored
 
-Only your own settings — the selected mode and, if you entered one, your API key —
-held in Chrome's local extension storage on your device. Your API key is never
-transmitted anywhere except to Google, in requests you initiate.
+Nothing. There are no settings, no accounts, no API keys, and no stored message
+content or history.
 
 ## What is not done
 
-No message content is stored, logged, or retained after analysis. Nothing is sent to
-the developer. No third-party analytics, trackers, or advertising SDKs are included.
-No data is sold or shared with anyone.
+No data is collected, logged, retained, transmitted, sold, or shared. There are no
+analytics, no telemetry, no trackers, and no third-party SDKs of any kind.
 
 ## Removing your data
 
-Uninstalling the extension deletes all stored settings. Clearing them without
-uninstalling is possible from the extension's popup.
+There is no data to remove. Uninstalling the extension removes it completely.
 
 ## Limitations you should know about
 
-ScamShield is an advisory tool. It can be wrong in both directions — flagging
-legitimate messages and missing real scams. It never deletes, blocks, moves, or
-replies to anything. All decisions remain yours.
+ScamShield is advisory. It can be wrong in both directions — flagging legitimate
+messages, and missing real scams. It never deletes, blocks, moves, or replies to
+anything. Every decision remains yours.
 
 ## Contact
 

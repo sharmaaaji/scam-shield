@@ -3,9 +3,10 @@
 A Chrome extension that flags likely scam and phishing messages in **Gmail** and
 **WhatsApp Web** as they render — no copy-pasting, no manual checking.
 
-**Your messages are never sent to any server we operate.** Analysis runs on-device
-using Chrome's built-in Gemini Nano, or optionally through your own Gemini API key
-called directly from your browser.
+**The extension makes no network requests at all.** Analysis runs entirely on-device
+using Chrome's built-in Gemini Nano, and the manifest requests **zero permissions** —
+no storage, no host permissions, nothing beyond running on the two supported sites.
+There is nothing to configure and no API key to supply.
 
 ## Why it works this way
 
@@ -40,8 +41,8 @@ message renders in Gmail / WhatsApp Web
         ▼
 ┌─────────────────────────────────────────────────────────┐
 │ TIER 1 — shared/classifier.js                            │
-│ Gemini Nano on-device, or your own key direct to Google │
-│ JSON-schema-constrained verdict                          │
+│ Chrome's built-in Gemini Nano, on-device                 │
+│ JSON-schema-constrained verdict. No network.             │
 └─────────────────────────────────────────────────────────┘
         │
         ▼
@@ -101,11 +102,12 @@ attack.
 ## Setup
 
 1. `chrome://extensions` → enable **Developer mode** → **Load unpacked** → select `extension/`.
-2. Click the extension icon. It reports whether the on-device model is ready.
-3. If your device can't run it, paste your own [Gemini API key](https://aistudio.google.com/apikey) — requests go straight from your browser to Google.
+2. Click the extension icon — it reports whether the on-device model is ready.
+3. Open Gmail or WhatsApp Web. That's the whole setup.
 
-Requires **Chrome 138+**. On-device inference needs desktop Chrome, ~22 GB free disk,
-and either >4 GB VRAM or 16 GB RAM with 4+ cores.
+Requires **Chrome 138+** on desktop, ~22 GB free disk, and either >4 GB VRAM or
+16 GB RAM with 4+ cores. If the device can't meet that, the extension says so in its
+popup and does nothing — rather than silently appearing to protect you.
 
 ## Limitations — stated rather than hidden
 
@@ -113,9 +115,12 @@ and either >4 GB VRAM or 16 GB RAM with 4+ cores.
   API for reading messages. `div.a3s` and `div.message-in` have been stable a long
   time but are not contracts. Each is isolated to one adapter file so a redesign
   breaks one small thing.
-- **Desktop only.** Chrome for Android and iOS don't support the built-in model, and
-  WhatsApp is overwhelmingly a phone app — so this covers WhatsApp *Web*, a minority
-  of the real attack surface.
+- **Desktop only, with a hardware floor.** Chrome for Android and iOS don't support
+  the built-in model, and WhatsApp is overwhelmingly a phone app — so this covers
+  WhatsApp *Web*, a minority of the real attack surface. There is an uncomfortable
+  irony in the hardware requirement too: the people most exposed to scams often run
+  the cheapest machines, which are exactly the ones that can't run a local model.
+  Choosing on-device buys absolute privacy and pays for it in reach.
 - **Nano is a small model.** Its accuracy versus cloud Gemini on this task has not yet
   been measured; see [`eval/`](eval/) for the harness and the current status.
 - **It advises, never acts.** No auto-delete, no auto-block, no auto-reply. Deliberate.
@@ -129,11 +134,11 @@ and either >4 GB VRAM or 16 GB RAM with 4+ cores.
 ```
 extension/
 ├── shared/triage.js      Tier 0 — deterministic, measured, no model
-├── shared/classifier.js  Tier 1 — on-device Nano or BYOK cloud
+├── shared/classifier.js  Tier 1 — on-device Gemini Nano only
 ├── shared/scanner.js     shared pipeline: observe → triage → classify → badge
 ├── content-gmail.js      Gmail adapter (brand/domain mismatch)
 ├── content-whatsapp.js   WhatsApp adapter (unsaved sender, first contact)
-└── popup.html/js         provider choice + your own API key
+└── popup.html/js         status only — there is nothing to configure
 
 eval/
 ├── dataset.json          100 labeled messages, 25 deliberate scam-lookalikes

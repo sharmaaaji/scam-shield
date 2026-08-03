@@ -4,8 +4,6 @@
   "version": "0.2.0",
   "description": "Flags likely scam and phishing messages in Gmail and WhatsApp Web. Runs on-device by default — your messages are never sent to us.",
   "minimum_chrome_version": "138",
-  "permissions": ["storage"],
-  "host_permissions": ["https://generativelanguage.googleapis.com/*"],
   "content_scripts": [
     {
       "matches": ["https://mail.google.com/*"],

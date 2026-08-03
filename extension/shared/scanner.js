@@ -44,40 +44,17 @@
     return badge;
   }
 
-  async function classify(text, signals, source, settings) {
-    const C = root.ScamShieldClassifier;
-
-    if (settings.provider !== "byok-cloud") {
-      const availability = await C.onDeviceAvailability();
-      if (availability === "available") {
-        return await C.classifyOnDevice(text, signals, source);
-      }
-      // "downloadable"/"downloading" mean the model is not ready yet. Rather
-      // than block on a multi-GB download, fall through to cloud if configured.
-      if (!settings.apiKey) {
-        const err = new Error("on-device model " + availability);
-        err.code = "MODEL_UNAVAILABLE";
-        throw err;
-      }
-    }
-
-    if (!settings.apiKey) {
-      const err = new Error("no API key configured");
-      err.code = "NO_KEY";
-      throw err;
-    }
-    return await C.classifyByokCloud(text, signals, source, settings.apiKey, settings.model);
-  }
-
   function createScanner(adapter) {
-    let settings = { provider: "auto", apiKey: "", model: "gemini-flash-latest" };
+    // Checked once per page rather than per message; if the device cannot run
+    // the model, Tier 1 is skipped entirely and no badges are ever shown.
+    let modelState = null;
 
-    chrome.storage.local.get(["provider", "apiKey", "model"], (stored) => {
-      settings = Object.assign(settings, stored || {});
-    });
-    chrome.storage.onChanged.addListener((changes) => {
-      for (const key of Object.keys(changes)) settings[key] = changes[key].newValue;
-    });
+    async function ensureModelState() {
+      if (modelState === null) {
+        modelState = await root.ScamShieldClassifier.onDeviceAvailability();
+      }
+      return modelState;
+    }
 
     async function handle(element) {
       if (element.getAttribute(PROCESSED)) return;
@@ -105,17 +82,21 @@
         return; // stay silent on safe messages - badges only for real signals
       }
 
-      // Tier 1: the model.
+      // Tier 1: the on-device model.
+      if ((await ensureModelState()) !== "available") {
+        element.setAttribute(PROCESSED, "no-model");
+        return;
+      }
+
       let result;
       try {
-        result = await classify(text, triaged.signals, adapter.source, settings);
-      } catch (err) {
+        result = await root.ScamShieldClassifier.classifyOnDevice(
+          text, triaged.signals, adapter.source
+        );
+      } catch (_) {
         // Fail quiet, never fail reassuring. Showing nothing is honest; showing
         // "safe" because the classifier broke would be actively harmful.
         element.setAttribute(PROCESSED, "error");
-        if (err.code === "NO_KEY" || err.code === "MODEL_UNAVAILABLE") {
-          root.__scamshieldNeedsSetup = true;
-        }
         return;
       }
 
