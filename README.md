@@ -1,119 +1,147 @@
 # ScamShield
 
-A browser extension that automatically flags likely scam/phishing messages in
-**Gmail** and **WhatsApp Web** — no copy-pasting into an app, no manually checking
-a message you're already suspicious of. It scans messages as they render and
-overlays a warning badge directly on the ones worth a second look.
+A Chrome extension that flags likely scam and phishing messages in **Gmail** and
+**WhatsApp Web** as they render — no copy-pasting, no manual checking.
 
-## Why this exists
+**Your messages are never sent to any server we operate.** Analysis runs on-device
+using Chrome's built-in Gemini Nano, or optionally through your own Gemini API key
+called directly from your browser.
 
-Real scam-detection tools (Google Messages' spam protection, Truecaller, Apple's
-Message Filtering extension) all work the same way: the message is classified
-*before* you'd naturally read it closely, not after you've already decided to
-investigate it yourself. A tool that requires you to copy-paste a message you're
-suspicious of is solving the problem for people who are already suspicious — the
-people who most need this are the ones who *aren't* suspicious yet.
+## Why it works this way
 
-## How it works
+A tool that requires you to paste a message you're already suspicious of only helps
+people who are already suspicious. The people most at risk are the ones who don't
+get suspicious in time — so the check has to happen before you'd read the message
+closely, not after you've decided to investigate it.
 
-```
-Gmail / WhatsApp Web page
-        │
-        │  MutationObserver detects a new message rendering
-        ▼
-Content script extracts the message text
-        │
-        ▼
-Background service worker calls the backend API
-        │
-        ▼
-Api/  →  MessageSignalExtractor (deterministic regex: URLs, phone numbers,
-         money mentions, urgency phrases — plain code, no LLM)
-        │
-        ▼
-      ScamAnalysisService → Gemini (LLM judges the message using the raw text
-      AND the extracted signals together, returns structured JSON: verdict,
-      confidence, red flags, reasoning, recommended action)
-        │
-        ▼
-Content script overlays a badge on the message (only for "suspicious"/"scam" -
-stays silent on "safe" messages to avoid alert fatigue)
-```
+## Architecture
 
-Same split used in [IncidentIQ](https://github.com/sharmaaaji/incident-iq):
-deterministic code does what deterministic code is good at (extracting URLs,
-phone numbers, urgency phrases), and the LLM is reserved for the actual judgment
-call — a URL or urgent tone alone doesn't prove a scam, so the model reasons over
-the message as a whole rather than triggering off any single signal.
-
-## Project layout
+Two tiers, because most messages don't need a language model at all.
 
 ```
-Api/                          ASP.NET Core backend (the classifier)
-├── Controllers/AnalyzeController.cs   POST /api/analyze
-├── Services/
-│   ├── MessageSignalExtractor.cs      regex-based URL/phone/money/urgency extraction
-│   ├── ILlmClient.cs / GeminiClient.cs  Gemini API client
-│   └── ScamAnalysisService.cs         builds the prompt, parses structured JSON
-└── Models/Dtos.cs
-
-extension/                    Chrome extension (Manifest V3)
-├── manifest.json
-├── background.js             calls the API, caches results by message-text hash
-├── content-gmail.js          watches Gmail's message body DOM
-├── content-whatsapp.js       watches WhatsApp Web's incoming-message DOM
-├── styles.css                badge styling
-└── popup.html / popup.js     lets you point the extension at a different API URL
-
-eval/                         accuracy evaluation (see eval/README.md)
-├── dataset.json              100 labeled messages, incl. 25 scam-lookalike negatives
-└── run_eval.py               harness: precision/recall/false-positive breakdown
+message renders in Gmail / WhatsApp Web
+        │
+        ▼
+  MutationObserver (debounced) picks it up
+        │
+        ▼
+┌─────────────────────────────────────────────────────────┐
+│ TIER 0 — shared/triage.js   deterministic, no model     │
+│                                                          │
+│ Extracts: URLs · phone numbers · money · urgency ·      │
+│ credential/OTP requests · payment actions · link        │
+│ references · chain mechanics · identity claims ·        │
+│ threats · reward framing · sender metadata              │
+│                                                          │
+│ No signal at all  →  "safe", done. No model call.       │
+│ Any signal        →  escalate                            │
+└─────────────────────────────────────────────────────────┘
+        │ escalated only
+        ▼
+┌─────────────────────────────────────────────────────────┐
+│ TIER 1 — shared/classifier.js                            │
+│ Gemini Nano on-device, or your own key direct to Google │
+│ JSON-schema-constrained verdict                          │
+└─────────────────────────────────────────────────────────┘
+        │
+        ▼
+  badge rendered — only for non-safe verdicts
 ```
 
-## Accuracy
+**The fast path may only ever return "safe".** It can never call something a scam on
+its own. Being wrong by escalating costs one inference call; being wrong by clearing
+a scam costs the user money.
 
-A 100-message labeled test set lives in [`eval/`](eval/), built so that 25 of the
-50 legitimate messages are deliberate scam-lookalikes (real bank OTPs, transaction
-alerts, delivery links, urgent promos) — because the number that decides whether
-this is usable isn't the catch rate, it's the false-alarm rate on legitimate mail.
+### Measured on the 100-message test set
 
-**No accuracy numbers are claimed yet.** The first run exhausted the Gemini free
-tier's daily quota partway through; see [`eval/README.md`](eval/README.md) for
-methodology, the known bias in an author-written test set, and current status.
+| | |
+|---|---|
+| Resolved with no model call | **27%** |
+| Scams wrongly cleared by the fast path | **0 / 50** |
+
+The first implementation leaked **2 of 50 scams**. Both shared one root cause:
+messages that *refer* to a link without containing a parseable URL — *"download the
+APK from this link"*, *"the migration portal below"* — because in real mail the URL
+lives in an anchor's `href`, not in `innerText`. Adding link-reference detection
+brought leakage to zero, costing 4 points of bypass rate. That trade is correct.
+
+Reproduce it offline, free, in about a second:
+
+```bash
+osascript -l JavaScript eval/triage_eval.js
+```
+
+## Gmail and WhatsApp are handled differently
+
+Both are supported, but the useful metadata differs, so each has its own adapter.
+
+**Gmail** — the sender is rendered as `<span email="..." name="...">`, which exposes
+the real address even when the UI shows only a friendly name. That enables
+**brand/domain mismatch** detection: a display name of *"HDFC Bank Support"* arriving
+from `gmail.com` is the single strongest cheap phishing tell available in the DOM.
+A matching domain (`hdfcbank.com`) produces no signal.
+
+**WhatsApp Web** — there are no domains, so the equivalent signal is whether the chat
+header shows a **name or a raw phone number**. An unsaved number is how
+family-impersonation scams announce themselves, and combined with an identity claim
+(*"this is your uncle, I've changed my number"*) it's the only thing that catches
+them — those messages contain no link, no amount, and no urgency.
+
+## The `unverified-identity` verdict
+
+Some messages genuinely cannot be classified from their text. *"Hi beta, this is your
+uncle, I've changed my number"* is either your uncle or the opening move of a scam,
+and nothing in the sentence distinguishes them.
+
+Rather than guess, these get a fourth verdict and advice that is **correct either
+way**: verify through a channel you already trust before acting on any request. If
+it's really your uncle, that costs a phone call. If it isn't, it defeats the entire
+attack.
 
 ## Setup
 
-### 1. Run the backend
+1. `chrome://extensions` → enable **Developer mode** → **Load unpacked** → select `extension/`.
+2. Click the extension icon. It reports whether the on-device model is ready.
+3. If your device can't run it, paste your own [Gemini API key](https://aistudio.google.com/apikey) — requests go straight from your browser to Google.
 
-```bash
-cd Api
-dotnet user-secrets set "Gemini:ApiKey" "your-gemini-api-key"
-dotnet run --urls http://localhost:5090
+Requires **Chrome 138+**. On-device inference needs desktop Chrome, ~22 GB free disk,
+and either >4 GB VRAM or 16 GB RAM with 4+ cores.
+
+## Limitations — stated rather than hidden
+
+- **DOM selectors are unofficial.** Neither Gmail nor WhatsApp Web offers an extension
+  API for reading messages. `div.a3s` and `div.message-in` have been stable a long
+  time but are not contracts. Each is isolated to one adapter file so a redesign
+  breaks one small thing.
+- **Desktop only.** Chrome for Android and iOS don't support the built-in model, and
+  WhatsApp is overwhelmingly a phone app — so this covers WhatsApp *Web*, a minority
+  of the real attack surface.
+- **Nano is a small model.** Its accuracy versus cloud Gemini on this task has not yet
+  been measured; see [`eval/`](eval/) for the harness and the current status.
+- **It advises, never acts.** No auto-delete, no auto-block, no auto-reply. Deliberate.
+- **It fails quiet, never reassuring.** If classification errors out, no badge appears.
+  Showing "safe" because the classifier broke would be worse than showing nothing.
+- **Some scams are structurally uncatchable here** — a spoofed saved contact, or a
+  message that just says "hey, call me".
+
+## Repository layout
+
+```
+extension/
+├── shared/triage.js      Tier 0 — deterministic, measured, no model
+├── shared/classifier.js  Tier 1 — on-device Nano or BYOK cloud
+├── shared/scanner.js     shared pipeline: observe → triage → classify → badge
+├── content-gmail.js      Gmail adapter (brand/domain mismatch)
+├── content-whatsapp.js   WhatsApp adapter (unsaved sender, first contact)
+└── popup.html/js         provider choice + your own API key
+
+eval/
+├── dataset.json          100 labeled messages, 25 deliberate scam-lookalikes
+├── triage_eval.js        Tier-0 evaluation — offline, free, instant
+└── run_eval.py           full pipeline evaluation (needs a model)
+
+Api/                      optional self-hosted backend; NOT used by the extension
 ```
 
-Get a free Gemini key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
-
-### 2. Load the extension
-
-1. Open `chrome://extensions` in Chrome.
-2. Turn on **Developer mode** (top right).
-3. Click **Load unpacked** and select the `extension/` folder.
-4. Open Gmail or WhatsApp Web — the extension calls `http://localhost:5090` by
-   default. If you deploy the backend elsewhere, click the extension icon and
-   update the API URL in the popup.
-
-## Known limitations (worth knowing, not hiding)
-
-- **DOM scraping is inherently fragile.** Neither Gmail nor WhatsApp Web offers
-  an official way for a browser extension to read message content — this relies
-  on unofficial, undocumented CSS classes (`div.a3s` for Gmail, `div.message-in`
-  for WhatsApp Web) that have been stable for a long time but could break if
-  either product changes its markup. A production version of this for Gmail
-  specifically could move to the official Gmail API (OAuth, readonly scope)
-  for a more robust integration; WhatsApp has no equivalent official API for
-  personal accounts.
-- **No verdict is ever certain.** The tool flags *likely* scams for a human to
-  weigh, it doesn't auto-delete or block anything.
-- **Every message sent to the backend goes to a third-party LLM (Gemini).**
-  Fine for personal use on your own messages; not something to point at
-  anyone else's inbox without their knowledge.
+`Api/` remains for local development and self-hosting. The published extension never
+calls it — that's what keeps user messages out of anyone else's hands.

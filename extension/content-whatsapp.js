@@ -1,51 +1,63 @@
+/**
+ * WhatsApp Web adapter.
+ *
+ * As with Gmail these selectors are unofficial. WhatsApp offers no API for
+ * personal-account message access, so DOM reading is the only route available
+ * to an extension.
+ */
 (function () {
-  const PROCESSED_ATTR = "data-scamshield-processed";
+  "use strict";
 
-  function createBadge(result) {
-    const badge = document.createElement("div");
-    badge.className = `scamshield-badge scamshield-${result.verdict}`;
-    const icon = result.verdict === "scam" ? "⛔" : "⚠️";
-    const label = result.verdict === "scam" ? "Likely Scam" : "Suspicious";
-    badge.textContent = `${icon} ${label}`;
-    const flags = result.redFlags && result.redFlags.length
-      ? `\n\nRed flags:\n- ${result.redFlags.join("\n- ")}`
-      : "";
-    badge.title = `${result.reasoning}${flags}`;
-    return badge;
+  const INCOMING_SELECTOR = "div.message-in";
+  const TEXT_SELECTOR = "span.selectable-text";
+
+  // A chat header showing a raw phone number instead of a name means the
+  // sender is not in the user's contacts. Combined with an identity claim
+  // ("this is your uncle, I changed my number") that is the core signal for
+  // family-impersonation scams, which carry no link, no amount and no urgency
+  // and are otherwise invisible to every other rule.
+  const PHONE_LIKE = /^\+?[\d\s\-()]{7,}$/;
+
+  function readChatTitle() {
+    const header = document.querySelector("#main header");
+    if (!header) return "";
+    const titled = header.querySelector("span[title]");
+    return titled ? titled.getAttribute("title") || "" : header.innerText || "";
   }
 
-  function analyzeBubble(bubble) {
-    if (bubble.getAttribute(PROCESSED_ATTR)) return;
+  function getContext(bubble) {
+    const context = {};
+    try {
+      const title = readChatTitle().trim();
+      context.senderIsUnknown = Boolean(title) && PHONE_LIKE.test(title);
 
-    const textEl = bubble.querySelector("span.selectable-text");
-    const text = textEl ? textEl.innerText.trim() : "";
-    if (!text || text.length < 8) {
-      bubble.setAttribute(PROCESSED_ATTR, "skipped");
-      return;
-    }
-
-    bubble.setAttribute(PROCESSED_ATTR, "pending");
-    chrome.runtime.sendMessage({ type: "ANALYZE", text, source: "whatsapp" }, (response) => {
-      if (!response || !response.ok) {
-        bubble.setAttribute(PROCESSED_ATTR, "error");
-        return;
+      // data-pre-plain-text looks like "[10:04, 2/8/2026] Name: ". In a group
+      // chat this identifies the individual sender rather than the chat.
+      const meta = bubble.querySelector("[data-pre-plain-text]");
+      if (meta) {
+        const raw = meta.getAttribute("data-pre-plain-text") || "";
+        const name = (raw.split("]").pop() || "").replace(/:\s*$/, "").trim();
+        if (name && PHONE_LIKE.test(name)) context.senderIsUnknown = true;
       }
-      bubble.setAttribute(PROCESSED_ATTR, "done");
-      if (response.result.verdict === "safe") return;
-      const badge = createBadge(response.result);
-      bubble.appendChild(badge);
-    });
+
+      // Treat the first incoming bubble in the thread as a first contact.
+      const all = document.querySelectorAll(INCOMING_SELECTOR);
+      context.isFirstMessage = all.length > 0 && all[0] === bubble;
+    } catch (_) {
+      /* best-effort metadata only */
+    }
+    return context;
   }
 
-  function scan() {
-    // WhatsApp Web has no official API for personal-account message access -
-    // "message-in" is an undocumented class WhatsApp uses for incoming bubbles
-    // and has for years, but it's not a guarantee against future breakage.
-    document.querySelectorAll("div.message-in").forEach(analyzeBubble);
-  }
-
-  const observer = new MutationObserver(() => scan());
-  observer.observe(document.body, { childList: true, subtree: true });
-
-  scan();
+  window.ScamShieldScanner.createScanner({
+    source: "whatsapp",
+    minLength: 8,
+    findMessages: () => Array.from(document.querySelectorAll(INCOMING_SELECTOR)),
+    getText: (el) => {
+      const node = el.querySelector(TEXT_SELECTOR);
+      return node ? node.innerText : "";
+    },
+    getContext,
+    attachBadge: (el, badge) => el.appendChild(badge)
+  });
 })();

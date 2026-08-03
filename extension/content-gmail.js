@@ -1,53 +1,53 @@
+/**
+ * Gmail adapter.
+ *
+ * Gmail's web client exposes no official DOM contract, so these selectors are
+ * unofficial and long-standing rather than guaranteed. They are isolated here
+ * precisely so a Gmail redesign breaks one small file and nothing else.
+ */
 (function () {
-  const PROCESSED_ATTR = "data-scamshield-processed";
+  "use strict";
 
-  function createBadge(result) {
-    const badge = document.createElement("div");
-    badge.className = `scamshield-badge scamshield-${result.verdict}`;
-    const icon = result.verdict === "scam" ? "⛔" : "⚠️";
-    const label = result.verdict === "scam" ? "Likely Scam" : "Suspicious";
-    badge.textContent = `${icon} ScamShield: ${label}`;
-    const flags = result.redFlags && result.redFlags.length
-      ? `\n\nRed flags:\n- ${result.redFlags.join("\n- ")}`
-      : "";
-    badge.title = `${result.reasoning}${flags}`;
-    return badge;
+  // div.a3s is the rendered message body. Gmail appends variant classes
+  // (a3s aiL, a3s aXjCH) so match on the stable part only.
+  const BODY_SELECTOR = "div.a3s";
+
+  // Gmail renders the sender as <span email="..." name="...">, which gives us
+  // the real address even when the UI only displays a friendly name. This is
+  // Gmail's counterpart to WhatsApp's "is this number saved" signal - and a
+  // display name claiming a brand its domain doesn't match is the single
+  // strongest cheap phishing tell available here.
+  const SENDER_SELECTOR = "span[email]";
+
+  function closestMessageContainer(bodyEl) {
+    return bodyEl.closest("div[role='listitem']") || bodyEl.closest(".gs") || bodyEl.parentElement;
   }
 
-  function analyzeElement(el) {
-    if (el.getAttribute(PROCESSED_ATTR)) return;
-    el.setAttribute(PROCESSED_ATTR, "pending");
-
-    const text = el.innerText.trim();
-    if (!text || text.length < 20) {
-      el.setAttribute(PROCESSED_ATTR, "skipped");
-      return;
-    }
-
-    chrome.runtime.sendMessage({ type: "ANALYZE", text, source: "gmail" }, (response) => {
-      if (!response || !response.ok) {
-        el.setAttribute(PROCESSED_ATTR, "error");
-        return;
+  function getContext(bodyEl) {
+    const context = {};
+    try {
+      const container = closestMessageContainer(bodyEl);
+      const sender = container && container.querySelector(SENDER_SELECTOR);
+      if (sender) {
+        const address = sender.getAttribute("email") || "";
+        context.senderDisplayName = sender.getAttribute("name") || sender.textContent || "";
+        context.senderDomain = address.includes("@") ? address.split("@").pop().toLowerCase() : "";
       }
-      el.setAttribute(PROCESSED_ATTR, "done");
-      // Only surface a badge for suspicious/scam - staying quiet on "safe" keeps
-      // the UI from turning into noise on every ordinary email.
-      if (response.result.verdict === "safe") return;
-      const badge = createBadge(response.result);
-      el.parentElement?.insertBefore(badge, el);
-    });
+    } catch (_) {
+      /* selectors are best-effort; absent metadata just means less context */
+    }
+    return context;
   }
 
-  function scan() {
-    // Gmail ships no official DOM API for the web client. div.a3s is a
-    // long-standing (undocumented) class Gmail uses for rendered message
-    // bodies - the same anchor several long-running third-party Gmail
-    // extensions rely on. It can break if Google changes their markup.
-    document.querySelectorAll("div.a3s.aiL, div.a3s").forEach(analyzeElement);
-  }
-
-  const observer = new MutationObserver(() => scan());
-  observer.observe(document.body, { childList: true, subtree: true });
-
-  scan();
+  window.ScamShieldScanner.createScanner({
+    source: "gmail",
+    minLength: 20,
+    findMessages: () => Array.from(document.querySelectorAll(BODY_SELECTOR)),
+    getText: (el) => el.innerText,
+    getContext,
+    attachBadge: (el, badge) => {
+      const parent = el.parentElement;
+      if (parent) parent.insertBefore(badge, el);
+    }
+  });
 })();
