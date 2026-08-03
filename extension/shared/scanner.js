@@ -114,14 +114,28 @@
   }
 
   function createScanner(adapter) {
-    // Checked once per page rather than per message; if the device cannot run
-    // the model, Tier 1 is skipped entirely and no badges are ever shown.
+    // Cached so we don't re-query per message. "available" is terminal, but any
+    // other state must be re-checked: the user may download the model while this
+    // tab is already open, and caching "downloadable" forever would leave the
+    // page permanently inert with no way back short of a reload.
     let modelState = null;
+    let lastStateCheck = 0;
+    const RECHECK_MS = 20000;
 
     async function ensureModelState() {
-      if (modelState === null) {
+      const stale = Date.now() - lastStateCheck > RECHECK_MS;
+      if (modelState === null || (modelState !== "available" && stale)) {
+        const previous = modelState;
         modelState = await root.ScamShieldClassifier.onDeviceAvailability();
-        log("on-device model:", modelState);
+        lastStateCheck = Date.now();
+
+        if (modelState !== previous) log("on-device model:", modelState);
+        if (previous && previous !== "available" && modelState === "available") {
+          log("model became available - re-scanning this page");
+          document.querySelectorAll("[" + PROCESSED + "='no-model']").forEach((el) =>
+            el.removeAttribute(PROCESSED)
+          );
+        }
         if (modelState === "downloadable" || modelState === "downloading") {
           log(
             "Model not ready yet (" + modelState + "). Open the ScamShield popup and " +
@@ -198,7 +212,10 @@
       }
 
       element.setAttribute(PROCESSED, "done");
-      log(`tier1 verdict: ${result.verdict} (${Number(result.confidence || 0).toFixed(2)})`);
+      log(
+        `tier1 verdict: ${result.verdict} (${Number(result.confidence || 0).toFixed(2)})` +
+          ` | "${preview}…"`
+      );
       if (result.verdict === "safe") return;
 
       const badge = adapter.style === "pill" ? renderPill(result) : renderAlert(result);
