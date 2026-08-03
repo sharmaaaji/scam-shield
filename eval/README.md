@@ -54,11 +54,35 @@ constructed specifically to punish naive signal-matching (urgency + a link + a
 rupee amount appears in both halves of the set) — but a genuinely rigorous
 evaluation would use a public labeled corpus or real reported-scam data.
 
-## Status
+## Status: incomplete — no accuracy claim yet
 
-Not yet completed. The first full run reached ~33 of 100 messages before
-exhausting the Gemini free tier's **daily** request quota
-(`GenerateRequestsPerDayPerProjectPerModel-FreeTier`), and those partial results
-were lost to a harness that only persisted output at completion. That flaw is
-fixed (incremental writes + resume), but no accuracy numbers have been produced
-yet, and none should be claimed until a full run lands.
+**14 of 100 messages scored. The result is not yet meaningful, and the catch
+rate below should not be quoted as an accuracy figure.**
+
+Of the 14 completed, all 14 were scams and all 14 were correctly flagged
+(confidence 0.98–0.99). That sounds strong and isn't: a classifier hardcoded to
+answer `"scam"` for every input would score identically. **Zero legitimate
+messages have been evaluated**, so the false-positive rate — the number that
+decides whether this is usable — remains entirely unmeasured.
+
+### Why it stalled
+
+The Gemini free tier's **daily** request cap
+(`GenerateRequestsPerDayPerProjectPerModel-FreeTier`) is far below what a
+100-message evaluation needs, and its per-minute cap is under 30 RPM, so most
+wall-clock time went into 429 backoff rather than useful calls. Completing this
+evaluation requires the paid tier; the free tier cannot support it.
+
+### Three harness bugs found and fixed along the way
+
+1. **Results were only persisted at completion** — the first run lost ~33
+   finished classifications when it was interrupted. Now written after every
+   message, with resume-on-restart.
+2. **`maxOutputTokens` was 512** — `gemini-flash-latest` is a thinking model
+   whose internal reasoning counts against that budget, so responses came back
+   truncated mid-JSON and every verdict silently degraded to the `unknown`
+   fallback. Raised to 2048.
+3. **The dataset was evaluated in authored order** (scams 1–50, legitimate
+   51–100), meaning any interrupted run measured recall only and produced no
+   false-positive signal at all. Evaluation order is now deterministically
+   shuffled so a partial run stays label-balanced.

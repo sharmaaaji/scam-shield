@@ -9,6 +9,7 @@ prediction - that is what a user actually experiences.
 """
 
 import json
+import random
 import time
 import urllib.request
 import urllib.error
@@ -16,7 +17,9 @@ from pathlib import Path
 from collections import defaultdict
 
 API_URL = "http://localhost:5090/api/analyze"
-DELAY_SECONDS = 2.0          # pacing for the Gemini free tier
+# The free tier's per-minute cap is well under 30 RPM. Pacing at 2s meant most
+# of the run was spent in 429 backoff; ~7s (roughly 8 RPM) finishes sooner.
+DELAY_SECONDS = 7.0
 MAX_RETRIES = 5
 
 HERE = Path(__file__).parent
@@ -59,6 +62,12 @@ def main():
         done_ids = {r["id"] for r in results if r.get("verdict") not in (None, "error")}
         if done_ids:
             print(f"Resuming: {len(done_ids)} messages already classified.\n")
+
+    # The dataset is authored scams-first, legit-second. Evaluate in a fixed
+    # shuffled order so that a run cut short by rate limits still yields a
+    # label-balanced sample - otherwise a partial run measures only recall and
+    # says nothing about false positives, which is the metric that matters.
+    random.Random(42).shuffle(dataset)
 
     todo = [c for c in dataset if c["id"] not in done_ids]
     print(f"Classifying {len(todo)} of {len(dataset)} messages...\n", flush=True)

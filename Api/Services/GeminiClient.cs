@@ -35,7 +35,10 @@ public class GeminiClient : ILlmClient
                 {
                     new GeminiContent { Role = "user", Parts = new[] { new GeminiPart { Text = userPrompt } } }
                 },
-                GenerationConfig = new GeminiGenerationConfig { MaxOutputTokens = 512 }
+                // gemini-flash-latest is a thinking model: internal reasoning tokens
+                // count against this budget. 512 left too little for the JSON body
+                // and responses came back truncated mid-object.
+                GenerationConfig = new GeminiGenerationConfig { MaxOutputTokens = 2048 }
             });
 
             var response = await _http.SendAsync(request, ct);
