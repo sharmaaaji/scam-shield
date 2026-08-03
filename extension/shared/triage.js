@@ -155,7 +155,44 @@
       context.senderDisplayName, context.senderDomain
     );
 
+    // The inverse, and just as important: the sender's domain genuinely matching
+    // the organisation it claims to be. Faking this requires controlling the
+    // real domain, so alignment is strong evidence of legitimacy - without it
+    // ordinary transactional mail ("Activate your Render account" from
+    // no-reply@render.com) reads as suspicious for want of any positive signal.
+    signals.senderDomainAligned = detectDomainAlignment(
+      context.senderDisplayName, context.senderDomain
+    );
+
     return signals;
+  }
+
+  // "email.claude.com" -> "claude";  "render.com" -> "render"
+  function registrableName(domain) {
+    const parts = String(domain || "").toLowerCase().split(".").filter(Boolean);
+    if (parts.length < 2) return "";
+    // Handle co.uk / co.in style suffixes by stepping back one more label.
+    const secondLast = parts[parts.length - 2];
+    if (parts.length >= 3 && (secondLast === "co" || secondLast === "com")) {
+      return parts[parts.length - 3];
+    }
+    return secondLast;
+  }
+
+  function detectDomainAlignment(displayName, domain) {
+    if (!displayName || !domain) return false;
+
+    const token = registrableName(domain);
+    if (!token || token.length < 3) return false;
+    if (FREEMAIL.includes(String(domain).toLowerCase())) return false;
+
+    const normalised = String(displayName).toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (!normalised) return false;
+
+    // Either the display name contains the domain's name ("Team BankBazaar" /
+    // bankbazaar.com) or the domain contains the display name ("Render" /
+    // render.com). Near-misses such as "rnder.com" correctly fail both.
+    return normalised.includes(token) || token.includes(normalised);
   }
 
   const BRANDS = [

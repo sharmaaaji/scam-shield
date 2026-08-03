@@ -30,6 +30,16 @@
     "- An OTP, PIN, CVV or password being REQUESTED FROM the recipient is always a scam.",
     "  No real bank, company or government body ever asks for these.",
     "",
+    "SENDER DOMAIN IS YOUR STRONGEST EVIDENCE:",
+    "If 'sender domain matches the organisation it claims to be' is true, the mail really",
+    "was sent from that company's own domain. Faking that requires controlling the real",
+    "domain, so treat it as strong evidence of legitimacy. Routine transactional mail from",
+    "an aligned domain - activating an account, verifying an email address, resetting a",
+    "password, receipts, security notifications - is SAFE. Asking someone to confirm their",
+    "email address is a normal part of signing up for a service, not a scam.",
+    "Only when the domain does NOT match the claimed organisation does a request to click,",
+    "verify or pay become a real warning sign.",
+    "",
     "DEFAULT TO SAFE. Most mail is legitimate. Ordinary business correspondence is safe",
     "even when it mentions money, links, deadlines or accounts. All of the following are",
     "SAFE unless they contain a specific fraud indicator:",
@@ -67,8 +77,10 @@
     "- reasoning is one or two plain sentences explaining, in everyday words, what the",
     "  sender is trying to do.",
     "- redFlags: at most 4 items, each a short plain-English phrase a non-technical",
-    "  person immediately understands. Write 'The sender's address is not really your",
-    "  bank', not 'Sender domain mismatch on SPF-unaligned envelope'.",
+    "  person immediately understands, describing something you can actually point to in",
+    "  THIS message. Never carry over a stock phrase about banks, accounts or passwords",
+    "  that does not apply here. If the message has no real warning signs, return an",
+    "  empty list rather than inventing one.",
     "",
     "recommendedAction must be sound advice whether or not the message turns out to be",
     "a scam - so that being wrong still leaves the reader safe."
@@ -124,7 +136,8 @@
       `- Prize/reward framing: ${signals.hasReward}`,
       `- Sender not in contacts: ${signals.senderIsUnknown}`,
       `- First message from this sender: ${signals.isFirstMessage}`,
-      `- Display name claims a brand its domain does not match: ${signals.brandDomainMismatch}`
+      `- Display name claims a brand its domain does NOT match: ${signals.brandDomainMismatch}`,
+      `- Sender domain matches the organisation it claims to be: ${signals.senderDomainAligned}`
     ].join("\n");
   }
 

@@ -90,10 +90,17 @@
   function shouldWarn(result, adapter) {
     if (!result || result.verdict === "safe" || result.verdict === "unknown") return false;
 
+    const confidence = Number(result.confidence || 0);
+
     if (adapter.strictThreshold) {
-      return result.verdict === "scam" && Number(result.confidence || 0) >= 0.7;
+      return result.verdict === "scam" && confidence >= 0.7;
     }
-    return true;
+
+    // Even with the full message in hand, a barely-past-the-middle "suspicious"
+    // is the model hedging rather than seeing something. Showing a large red
+    // panel on a 0.60 hunch is how a useful tool becomes background noise.
+    if (result.verdict === "scam") return confidence >= 0.6;
+    return confidence >= 0.75;
   }
 
   /** Compact marker for a list row, where a full panel would not fit. */
