@@ -43,17 +43,8 @@
 <div class="card"><pre id="report">No results yet.</pre></div>
 <div class="card"><div id="failures"></div></div>
 
-<script>
-// Load the shipping modules with a cache-buster. Without this the preview keeps
-// serving a stale copy, and an eval that silently measures old code is worse
-// than no eval at all.
-(function () {
-  const v = "?v=" + Date.now();
-  for (const src of ["../extension/shared/triage.js", "../extension/shared/classifier.js"]) {
-    document.write('<script src="' + src + v + '"><\/script>');
-  }
-})();
-</script>
+<script src="../extension/shared/triage.js?v=3"></script>
+<script src="../extension/shared/classifier.js?v=3"></script>
 <script>
 const STORAGE_KEY = "scamshield-eval-results";
 
@@ -247,6 +238,29 @@ async function detectStub() {
 }
 
 (async () => {
+  // Fail loudly and specifically rather than with a bare "undefined is not an
+  // object". The two ways this page gets opened wrong are a browser without
+  // Chrome's built-in AI, and file:// (where fetch of the dataset is blocked).
+  if (!globalThis.ScamShieldClassifier || !globalThis.ScamShieldTriage) {
+    setStatus("Could not load the extension modules — check the paths, and serve this page over http rather than opening the file directly.");
+    el("run").disabled = true; el("resume").disabled = true;
+    return;
+  }
+  if (location.protocol === "file:") {
+    setStatus("Opened as a file:// page. Browsers block loading dataset.json this way. " +
+              "Run:  python3 -m http.server 8765   from the scam-shield folder, then open " +
+              "http://localhost:8765/eval/run-on-device.html in Chrome.");
+    el("run").disabled = true; el("resume").disabled = true;
+    return;
+  }
+  if (typeof LanguageModel === "undefined" &&
+      !(self.ai && self.ai.languageModel) && !(window.ai && window.ai.languageModel)) {
+    setStatus("This browser has no built-in AI model. Chrome's on-device Gemini Nano is required — " +
+              "Safari and Firefox cannot run this. Open the same URL in Chrome 138+.");
+    el("run").disabled = true; el("resume").disabled = true;
+    return;
+  }
+
   const state = await globalThis.ScamShieldClassifier.onDeviceAvailability();
   if (state === "available" && (await detectStub())) {
     setStatus("STUB DETECTED — this browser has no real on-device model; it echoes input back. " +
