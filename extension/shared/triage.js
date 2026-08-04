@@ -147,28 +147,49 @@
 
   // "123456 is your OTP …" - a code being delivered, not requested.
   const OTP_DELIVERY_RE =
-    /\b\d{4,8}\b[^.]{0,50}\bis your\b[^.]{0,40}\b(otp|one[- ]time (code|password)|code)\b|\b(otp|code)\b[^.]{0,25}\bis\b\s*\d{4,8}/i;
+    /\b\d{4,8}\b(?:[^.]|\.\d){0,50}\bis your\b(?:[^.]|\.\d){0,40}\b(otp|one[- ]time (code|password)|code)\b|\b(otp|code)\b(?:[^.]|\.\d){0,25}\bis\b\s*\d{4,8}/i;
 
   // Anti-phishing boilerplate. A scammer wants the secret shared, so telling the
   // reader not to share it works against them.
   const DO_NOT_SHARE_RE = /\b(do not|don'?t|never)\s+(share|disclose|reveal)\b/i;
-  const NEVER_ASK_RE = /\bnever\s+ask(s|ed)?\b[^.]{0,40}\b(pin|otp|password|cvv|details)\b/i;
+  const NEVER_ASK_RE = /\bnever\s+ask(s|ed)?\b(?:[^.]|\.\d){0,40}\b(pin|otp|password|cvv|details)\b/i;
   // Must be an instruction to CALL a number the reader already has. Without the
   // call verb and the explicit "printed on"/"back of" wording, a caller-scam
   // asking for "the 3 digit number behind the card" matched this too.
   const OWN_CARD_CHANNEL_RE =
-    /\b(call|dial|contact)\b[^.]{0,40}\b(number|helpline)\b[^.]{0,30}\b(printed on|on the back of)\b[^.]{0,25}\bcard\b/i;
+    /\b(call|dial|contact)\b(?:[^.]|\.\d){0,40}\b(number|helpline)\b(?:[^.]|\.\d){0,30}\b(printed on|on the back of)\b(?:[^.]|\.\d){0,25}\bcard\b/i;
+
+  // "If you did not request this, ignore this email." A scammer needs the reader
+  // to act; explicitly offering the option to do nothing works against them.
+  // This is the standard closing line of every genuine password-reset and
+  // account-change notice, and its absence is what makes phishing copies read
+  // urgently.
+  const IGNORE_IF_NOT_YOU_RE = new RegExp(
+    "\\bif you (did ?n'?o?t|didn'?t|do not|don'?t)\\b(?:[^.]|\\.\\d){0,60}" +
+    "\\b(ignore|disregard|no (further )?action|nothing further|you can safely)\\b" +
+    "|\\bif (this|it) (was|wasn'?t) (you|not you)\\b(?:[^.]|\\.\\d){0,60}\\b(ignore|no (further )?action)\\b" +
+    "|\\bno (further )?action (is )?(required|needed)\\b",
+    "i"
+  );
+
+  // Directs the reader to a channel they already trust rather than one supplied
+  // by the message - the opposite of what a scam does.
+  const OWN_CHANNEL_RE = new RegExp(
+    "\\b(through|via|in|using|from)\\s+(the\\s+)?(official|your)\\s+(app|website|portal|mobile banking)" +
+    "|\\bat any branch\\b|\\bofficial (e-?filing |mobile banking )?portal\\b",
+    "i"
+  );
 
   // Past-tense account movement: an alert about something already done.
   const TXN_ALERT_RE =
-    /\b(debited|credited)\b[^.]{0,40}\b(a\/c|account|card|wallet)\b|\b(a\/c|account)\b[^.]{0,40}\b(debited|credited)\b/i;
+    /\b(debited|credited)\b(?:[^.]|\.\d){0,40}\b(a\/c|account|card|wallet)\b|\b(a\/c|account)\b(?:[^.]|\.\d){0,40}\b(debited|credited)\b/i;
 
   const COMPLETED_PAYMENT_RE =
-    /\b(payment|transaction|refund|order|booking)\b[^.]{0,80}\b(successfully\s+(processed|completed|placed)|was\s+successful|has\s+been\s+(processed|completed|credited|received|confirmed))/i;
+    /\b(payment|transaction|refund|order|booking)\b(?:[^.]|\.\d){0,80}\b(successfully\s+(processed|completed|placed)|was\s+successful|has\s+been\s+(processed|completed|credited|received|confirmed))/i;
 
   // An actual demand for money, as opposed to a mention of money.
   const PAYMENT_DEMAND_RE = new RegExp(
-    "\\b(pay|transfer|deposit|remit|recharge)\\b[^.]{0,40}\\b(now|immediately|today|urgently|within|before|to avoid|to release|to claim)\\b" +
+    "\\b(pay|transfer|deposit|remit|recharge)\\b(?:[^.]|\.\d){0,40}\\b(now|immediately|today|urgently|within|before|to avoid|to release|to claim)\\b" +
     "|\\bpay\\s*(rs\\.?|₹|inr|\\$)\\s*[\\d,]+" +
     "|\\b(processing|registration|verification|clearance)\\s+(fee|charge)\\b",
     "i"
@@ -197,6 +218,13 @@
     // A bank explicitly disclaiming that it would ever ask for credentials, or
     // directing the reader to a channel they already possess.
     if (NEVER_ASK_RE.test(t) || OWN_CARD_CHANNEL_RE.test(t)) return true;
+
+    // Explicitly telling the reader they may do nothing. Scams need action.
+    if (IGNORE_IF_NOT_YOU_RE.test(t)) return true;
+
+    // Points at the reader's own app/branch/portal rather than a supplied link,
+    // and does not otherwise push them anywhere.
+    if (OWN_CHANNEL_RE.test(t) && !LINK_REFERENCE_RE.test(t)) return true;
 
     // A code delivered to the reader, with the standard warning attached.
     if (OTP_DELIVERY_RE.test(t) && DO_NOT_SHARE_RE.test(t)) return true;
@@ -393,7 +421,7 @@
   // Bumped whenever the rules change. The evaluation page displays it and
   // refuses to run on an unexpected value - twice now a measurement has been
   // taken against a cached older build and read as a real result.
-  const VERSION = "2026-08-04-legit-notification-rules";
+  const VERSION = "2026-08-04-legit-markers-v2";
 
   root.ScamShieldTriage = {
     VERSION,

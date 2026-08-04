@@ -96,11 +96,13 @@
       return result.verdict === "scam" && confidence >= 0.7;
     }
 
-    // Even with the full message in hand, a barely-past-the-middle "suspicious"
-    // is the model hedging rather than seeing something. Showing a large red
-    // panel on a 0.60 hunch is how a useful tool becomes background noise.
+    // "scam" is an accusation and shows a red panel, so it needs real weight.
+    // "suspicious" renders as a softer "be careful" and can afford a lower bar -
+    // measurement showed two genuine scams (a task scam and a fake court
+    // summons) correctly judged suspicious at 0.70 and hidden by a 0.75 cutoff.
+    // The model was right; the threshold was wrong.
     if (result.verdict === "scam") return confidence >= 0.6;
-    return confidence >= 0.75;
+    return confidence >= 0.7;
   }
 
   /** Compact marker for a list row, where a full panel would not fit. */

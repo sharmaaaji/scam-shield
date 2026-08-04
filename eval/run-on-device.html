@@ -78,7 +78,7 @@ function save(results) {
 function isWarned(verdict, confidence) {
   if (verdict === "safe" || verdict === "unknown" || !verdict) return false;
   if (verdict === "scam") return confidence >= 0.6;
-  return confidence >= 0.75;
+  return confidence >= 0.7;   // must stay in step with scanner.js shouldWarn()
 }
 
 async function loadDataset() {
@@ -254,7 +254,7 @@ async function detectStub() {
 // The build this page expects. If the loaded triage.js reports anything else,
 // the browser served a cached copy and any numbers produced would describe code
 // that is no longer the code.
-const EXPECTED_VERSION = "2026-08-04-legit-notification-rules";
+const EXPECTED_VERSION = "2026-08-04-legit-markers-v2";
 
 (async () => {
   try { await window.__modulesReady; } catch (e) {
