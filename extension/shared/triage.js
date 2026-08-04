@@ -116,6 +116,100 @@
     "i"
   );
 
+  // ---------------------------------------------------------------------------
+  // Recognised legitimate notifications.
+  //
+  // Measurement showed the on-device model confidently misjudging exactly one
+  // family of messages: bank and transaction notices. It called a delivered OTP
+  // "asking for an OTP" (0.90), a debit alert a scam (0.95), and a fraud alert
+  // telling the reader to ring the number on their own card a scam (0.85).
+  // Restating the rule in the prompt did not fix it - a small model does not
+  // reliably hold a conditional like "TO you versus FROM you".
+  //
+  // So the distinction moves into code. The tell is that genuine notices carry
+  // anti-phishing markers a scammer has no reason to write: "do not share this
+  // OTP", "we will never ask for your PIN", "call the number printed on your
+  // card". Combined with the absence of any request for a secret, that is a
+  // reliable signal - and unlike the prompt, it cannot drift.
+  // ---------------------------------------------------------------------------
+
+  // Someone asking the reader to hand a secret over. If this is present, none of
+  // the "legitimate notification" rules below may fire, whatever else matches.
+  const SECRET_REQUEST_RE = new RegExp(
+    "(share|send|tell|provide|give|enter|confirm|verify with|reply with)\\s+" +
+    "(me\\s+|us\\s+)?(the|your|this)?\\s*(\\d\\s*-?\\s*digit\\s+)?" +
+    "(otp|one[- ]time (code|password)|code|pin|cvv|password|passcode" +
+    // Card details asked for in words rather than jargon - how a caller-scam
+    // actually phrases it ("the 3 digit number behind the card").
+    "|card (number|expiry|expiration)|security code|\\d\\s*-?\\s*digit number)",
+    "i"
+  );
+
+  // "123456 is your OTP …" - a code being delivered, not requested.
+  const OTP_DELIVERY_RE =
+    /\b\d{4,8}\b[^.]{0,50}\bis your\b[^.]{0,40}\b(otp|one[- ]time (code|password)|code)\b|\b(otp|code)\b[^.]{0,25}\bis\b\s*\d{4,8}/i;
+
+  // Anti-phishing boilerplate. A scammer wants the secret shared, so telling the
+  // reader not to share it works against them.
+  const DO_NOT_SHARE_RE = /\b(do not|don'?t|never)\s+(share|disclose|reveal)\b/i;
+  const NEVER_ASK_RE = /\bnever\s+ask(s|ed)?\b[^.]{0,40}\b(pin|otp|password|cvv|details)\b/i;
+  // Must be an instruction to CALL a number the reader already has. Without the
+  // call verb and the explicit "printed on"/"back of" wording, a caller-scam
+  // asking for "the 3 digit number behind the card" matched this too.
+  const OWN_CARD_CHANNEL_RE =
+    /\b(call|dial|contact)\b[^.]{0,40}\b(number|helpline)\b[^.]{0,30}\b(printed on|on the back of)\b[^.]{0,25}\bcard\b/i;
+
+  // Past-tense account movement: an alert about something already done.
+  const TXN_ALERT_RE =
+    /\b(debited|credited)\b[^.]{0,40}\b(a\/c|account|card|wallet)\b|\b(a\/c|account)\b[^.]{0,40}\b(debited|credited)\b/i;
+
+  const COMPLETED_PAYMENT_RE =
+    /\b(payment|transaction|refund|order|booking)\b[^.]{0,80}\b(successfully\s+(processed|completed|placed)|was\s+successful|has\s+been\s+(processed|completed|credited|received|confirmed))/i;
+
+  // An actual demand for money, as opposed to a mention of money.
+  const PAYMENT_DEMAND_RE = new RegExp(
+    "\\b(pay|transfer|deposit|remit|recharge)\\b[^.]{0,40}\\b(now|immediately|today|urgently|within|before|to avoid|to release|to claim)\\b" +
+    "|\\bpay\\s*(rs\\.?|₹|inr|\\$)\\s*[\\d,]+" +
+    "|\\b(processing|registration|verification|clearance)\\s+(fee|charge)\\b",
+    "i"
+  );
+
+  /**
+   * True when a message matches a legitimate-notification pattern strongly
+   * enough to skip the model entirely. Deliberately conservative: any request
+   * for a secret, or any demand for payment, disqualifies it outright.
+   */
+  function isRecognisedLegitimateNotification(text) {
+    const t = String(text || "");
+
+    // A regex cannot see negation: "Do not share this OTP" contains the exact
+    // substring "share this OTP" and was being read as a request for it. Remove
+    // negated clauses before testing, or every genuine OTP notice - which all
+    // carry that warning - disqualifies itself.
+    const withoutNegations = t.replace(
+      /\b(do not|do n't|don'?t|never)\s+(share|disclose|reveal|give|provide|send|tell)\b[^.!?]*/gi,
+      " "
+    );
+
+    if (SECRET_REQUEST_RE.test(withoutNegations)) return false;
+    if (PAYMENT_DEMAND_RE.test(t)) return false;
+
+    // A bank explicitly disclaiming that it would ever ask for credentials, or
+    // directing the reader to a channel they already possess.
+    if (NEVER_ASK_RE.test(t) || OWN_CARD_CHANNEL_RE.test(t)) return true;
+
+    // A code delivered to the reader, with the standard warning attached.
+    if (OTP_DELIVERY_RE.test(t) && DO_NOT_SHARE_RE.test(t)) return true;
+
+    // An alert about money that has already moved.
+    if (TXN_ALERT_RE.test(t)) return true;
+
+    // A receipt for something already completed.
+    if (COMPLETED_PAYMENT_RE.test(t)) return true;
+
+    return false;
+  }
+
   function unique(list) {
     return Array.from(new Set(list));
   }
@@ -240,6 +334,24 @@
    */
   function triage(text, context) {
     const signals = extractSignals(text, context);
+
+    // Checked before the risk flags, because these messages legitimately carry
+    // several of them - a debit alert mentions money, an OTP notice mentions a
+    // code - and would otherwise escalate to a model that gets them wrong.
+    if (isRecognisedLegitimateNotification(text)) {
+      return {
+        tier: "fast-path",
+        escalate: false,
+        verdict: "safe",
+        confidence: 0.9,
+        redFlags: [],
+        reasoning:
+          "Recognised as a routine notification: it reports something that already " +
+          "happened, or delivers a code, and asks for no secret or payment.",
+        recommendedAction: "No action needed.",
+        signals
+      };
+    }
 
     const riskFlags = [
       signals.urls.length > 0,

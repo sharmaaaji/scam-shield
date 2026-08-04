@@ -54,7 +54,64 @@ constructed specifically to punish naive signal-matching (urgency + a link + a
 rupee amount appears in both halves of the set) — but a genuinely rigorous
 evaluation would use a public labeled corpus or real reported-scam data.
 
-## Status: incomplete — no accuracy claim yet
+## Measured baseline — full pipeline on Gemini Nano, 4 Aug 2026
+
+First complete end-to-end run: Tier 0 → on-device Gemini Nano → display
+thresholds, 104 of 105 scored (1 model error).
+
+| | |
+|---|---|
+| Accuracy | 0.923 |
+| Precision | 0.887 |
+| Recall (catch rate) | 0.959 — 47 of 49 scams |
+| False-positive rate | 10.9% |
+| Hard-negative FP rate | **20.0% — 6 of 30** |
+| Resolved by Tier 0, no model | 26.0% |
+
+Recall was good. The false-positive rate was not, and every one of the six false
+alarms was a **bank or security notification** — the category scams imitate, and
+the mail real users receive most often.
+
+### What the failures showed
+
+The two "missed" scams were not model failures. Both (a task scam and a fake
+court summons) were correctly judged `suspicious` at 0.70 and hidden by the 0.75
+display threshold — the model was right, the threshold was wrong.
+
+The false alarms split in two. Four were **confidently wrong** and beyond any
+threshold fix:
+
+- a delivered OTP called a scam at 0.90, reasoned as *"the message asks for an OTP"* — it does not, the code is being delivered
+- a routine debit alert at 0.95
+- a bank fraud alert saying *"call the number printed on the back of your card"* at 0.85 — the safest possible instruction
+- a payment receipt at 0.85, described as *"asks you to pay again"*
+
+The delivered-vs-requested rule was stated explicitly in the prompt, twice, and
+the model still inverted it. **A model this small does not reliably hold a
+conditional distinction**, and restating it a third time was not going to work.
+
+### The fix, and why it is in code rather than the prompt
+
+Genuine notices carry anti-phishing markers a scammer has no reason to write:
+*"do not share this OTP"*, *"we will never ask for your PIN"*, *"call the number
+printed on your card"*. Combined with the absence of any request for a secret or
+demand for payment, that is a reliable deterministic signal — and unlike a
+prompt, it cannot drift. Those messages now resolve at Tier 0 and never reach
+the model.
+
+Two bugs surfaced while building that rule, both worth recording:
+
+1. `"Tell me the 3 digit number behind the card"` matched the *"number printed on
+   the back of your card"* marker. The scam and the reassurance share vocabulary,
+   so the rule now requires an explicit call verb.
+2. `"Do not share this OTP"` contains the substring *"share this OTP"*, so the
+   secret-request guard fired on every genuine OTP notice — regex cannot see
+   negation. Negated clauses are now stripped before the test.
+
+Tier 0 now resolves 31.4% with **0 of 50 scams leaked**. The end-to-end numbers
+above predate this change and need re-measuring.
+
+## Earlier status (superseded)
 
 **14 of 100 messages scored. The result is not yet meaningful, and the catch
 rate below should not be quoted as an accuracy figure.**
