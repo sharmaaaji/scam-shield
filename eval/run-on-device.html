@@ -1,0 +1,263 @@
+<meta charset="utf-8">
+<title>ScamShield — on-device evaluation</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         margin: 0; padding: 26px; background: #f6f8fa; color: #1f2328; }
+  h1 { font-size: 19px; margin: 0 0 4px; }
+  .sub { font-size: 13px; color: #656d76; margin: 0 0 18px; }
+  button { padding: 9px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
+           background: #1f6feb; color: #fff; border: 0; border-radius: 6px; margin-right: 8px; }
+  button:disabled { background: #8c959f; cursor: default; }
+  button.sec { background: #6e7781; }
+  .card { background: #fff; border: 1px solid #d0d7de; border-radius: 8px;
+          padding: 16px; margin-bottom: 14px; }
+  .bar { height: 7px; background: #eaecef; border-radius: 4px; overflow: hidden; margin: 12px 0 6px; }
+  .bar > div { height: 100%; width: 0; background: #1f6feb; transition: width .2s; }
+  #status { font-size: 12px; color: #656d76; }
+  pre { font-size: 12px; line-height: 1.55; white-space: pre-wrap; margin: 0;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid #eaecef; vertical-align: top; }
+  th { color: #656d76; font-weight: 600; }
+  .bad { background: #fff1f0; }
+  .warnrow { background: #fff8e6; }
+  code { font-size: 11px; color: #656d76; }
+</style>
+
+<h1>ScamShield — on-device evaluation</h1>
+<p class="sub">
+  Runs the full shipping pipeline (Tier 0 triage → Gemini Nano → display thresholds)
+  over the labelled dataset, entirely on this device. Free and unlimited.
+  Progress is saved as it goes, so closing the tab loses nothing.
+</p>
+
+<div class="card">
+  <button id="run">Run evaluation</button>
+  <button id="resume" class="sec">Resume</button>
+  <button id="reset" class="sec">Clear saved results</button>
+  <button id="download" class="sec">Download results JSON</button>
+  <div class="bar"><div id="bar"></div></div>
+  <div id="status">Idle.</div>
+</div>
+
+<div class="card"><pre id="report">No results yet.</pre></div>
+<div class="card"><div id="failures"></div></div>
+
+<script>
+// Load the shipping modules with a cache-buster. Without this the preview keeps
+// serving a stale copy, and an eval that silently measures old code is worse
+// than no eval at all.
+(function () {
+  const v = "?v=" + Date.now();
+  for (const src of ["../extension/shared/triage.js", "../extension/shared/classifier.js"]) {
+    document.write('<script src="' + src + v + '"><\/script>');
+  }
+})();
+</script>
+<script>
+const STORAGE_KEY = "scamshield-eval-results";
+
+const el = (id) => document.getElementById(id);
+const setStatus = (t) => (el("status").textContent = t);
+
+function loadSaved() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
+  catch (_) { return {}; }
+}
+function save(results) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(results));
+}
+
+// Mirrors scanner.js shouldWarn() for the opened-message path, so the numbers
+// reflect what a user would actually be shown rather than the raw verdict.
+function isWarned(verdict, confidence) {
+  if (verdict === "safe" || verdict === "unknown" || !verdict) return false;
+  if (verdict === "scam") return confidence >= 0.6;
+  return confidence >= 0.75;
+}
+
+async function loadDataset() {
+  const res = await fetch("dataset.json");
+  if (!res.ok) throw new Error("Could not load dataset.json (" + res.status + ")");
+  return res.json();
+}
+
+async function classify(entry) {
+  const T = globalThis.ScamShieldTriage;
+  const C = globalThis.ScamShieldClassifier;
+
+  const triaged = T.triage(entry.text, {});
+  if (!triaged.escalate) {
+    return { verdict: "safe", confidence: 0.9, tier: "tier0",
+             reasoning: "Resolved by fast path.", redFlags: [] };
+  }
+  const out = await C.classifyOnDevice(entry.text, triaged.signals, entry.source);
+  return { ...out, tier: "tier1" };
+}
+
+// Chrome refuses to fetch the model without a user gesture, so this must be
+// called straight from the click handler before any awaits burn the gesture.
+async function ensureModel() {
+  const state = await globalThis.ScamShieldClassifier.onDeviceAvailability();
+  if (state === "available") return true;
+  setStatus("Downloading model (" + state + ")… keep this tab open.");
+  const session = await LanguageModel.create({
+    outputLanguage: "en",
+    monitor(m) {
+      m.addEventListener("downloadprogress", (e) => {
+        const p = Math.round((e.total ? e.loaded / e.total : e.loaded) * 100);
+        el("bar").style.width = p + "%";
+        setStatus("Downloading model… " + p + "%");
+      });
+    }
+  });
+  if (session && session.destroy) session.destroy();
+  setStatus("Model ready.");
+  return true;
+}
+
+async function run(resume) {
+  await ensureModel();
+  const dataset = await loadDataset();
+  const results = resume ? loadSaved() : {};
+  if (!resume) save(results);
+
+  el("run").disabled = true;
+  el("resume").disabled = true;
+
+  const todo = dataset.filter((d) => !results[d.id]);
+  setStatus(`Classifying ${todo.length} of ${dataset.length}…`);
+
+  let done = dataset.length - todo.length;
+  for (const entry of todo) {
+    try {
+      const r = await classify(entry);
+      results[entry.id] = {
+        id: entry.id, label: entry.label, category: entry.category,
+        text: entry.text, verdict: r.verdict, confidence: r.confidence,
+        tier: r.tier, reasoning: r.reasoning, redFlags: r.redFlags
+      };
+    } catch (err) {
+      results[entry.id] = {
+        id: entry.id, label: entry.label, category: entry.category, text: entry.text,
+        verdict: "error", confidence: 0, tier: "error", reasoning: String(err), redFlags: []
+      };
+    }
+    done++;
+    save(results);                                   // persist after every case
+    el("bar").style.width = (100 * done / dataset.length).toFixed(1) + "%";
+    setStatus(`${done} / ${dataset.length} — last: id ${entry.id} → ${results[entry.id].verdict}`);
+    report(results);
+  }
+
+  el("run").disabled = false;
+  el("resume").disabled = false;
+  setStatus(`Finished. ${done} / ${dataset.length}.`);
+  report(results);
+}
+
+function report(resultsObj) {
+  const rows = Object.values(resultsObj);
+  if (!rows.length) return;
+
+  const scored = rows.filter((r) => r.verdict !== "error");
+  const errors = rows.length - scored.length;
+
+  const tp = scored.filter((r) => r.label === "scam" && isWarned(r.verdict, r.confidence));
+  const fn = scored.filter((r) => r.label === "scam" && !isWarned(r.verdict, r.confidence));
+  const fp = scored.filter((r) => r.label === "legit" && isWarned(r.verdict, r.confidence));
+  const tn = scored.filter((r) => r.label === "legit" && !isWarned(r.verdict, r.confidence));
+
+  const precision = tp.length / (tp.length + fp.length) || 0;
+  const recall = tp.length / (tp.length + fn.length) || 0;
+  const f1 = (2 * precision * recall) / (precision + recall) || 0;
+  const accuracy = (tp.length + tn.length) / scored.length || 0;
+  const pct = (n, d) => (d ? (100 * n / d).toFixed(1) + "%" : "n/a");
+
+  const hard = scored.filter((r) => r.category.startsWith("HARD-"));
+  const hardFp = hard.filter((r) => isWarned(r.verdict, r.confidence));
+  const tier0 = scored.filter((r) => r.tier === "tier0").length;
+
+  el("report").textContent = [
+    "SCORED  " + scored.length + " of " + rows.length + (errors ? "   errors: " + errors : ""),
+    "Resolved by Tier 0 without the model: " + tier0 + "  (" + pct(tier0, scored.length) + ")",
+    "",
+    "  caught (scam  -> warned) : " + tp.length,
+    "  MISSED (scam  -> quiet)  : " + fn.length,
+    "  FALSE ALARM (legit -> warned): " + fp.length,
+    "  correct silence (legit)  : " + tn.length,
+    "",
+    "  Accuracy            : " + accuracy.toFixed(3),
+    "  Precision           : " + precision.toFixed(3),
+    "  Recall (catch rate) : " + recall.toFixed(3),
+    "  F1                  : " + f1.toFixed(3),
+    "  False-positive rate : " + pct(fp.length, fp.length + tn.length),
+    "  Miss rate           : " + pct(fn.length, tp.length + fn.length),
+    "",
+    "  HARD negatives (realistic scam-lookalikes): " + hard.length,
+    "    falsely warned: " + hardFp.length + "  (" + pct(hardFp.length, hard.length) + ")"
+  ].join("\n");
+
+  const mistakes = [...fp.map((r) => ({ ...r, kind: "FALSE ALARM" })),
+                    ...fn.map((r) => ({ ...r, kind: "MISSED SCAM" }))];
+  if (!mistakes.length) { el("failures").innerHTML = "<b>No misclassifications.</b>"; return; }
+
+  const table = document.createElement("table");
+  table.innerHTML =
+    "<tr><th>Kind</th><th>id</th><th>Category</th><th>Verdict</th><th>Conf</th><th>Message</th><th>Model's reasoning</th></tr>";
+  for (const m of mistakes) {
+    const tr = document.createElement("tr");
+    tr.className = m.kind === "MISSED SCAM" ? "bad" : "warnrow";
+    for (const v of [m.kind, m.id, m.category, m.verdict, Number(m.confidence).toFixed(2),
+                     m.text.slice(0, 90) + "…", (m.reasoning || "").slice(0, 140)]) {
+      const td = document.createElement("td");
+      td.textContent = v;
+      tr.appendChild(td);
+    }
+    table.appendChild(tr);
+  }
+  el("failures").innerHTML = "<b>Misclassifications (" + mistakes.length + ")</b>";
+  el("failures").appendChild(table);
+}
+
+el("run").onclick = () => run(false).catch((e) => setStatus("Failed: " + e.message));
+el("resume").onclick = () => run(true).catch((e) => setStatus("Failed: " + e.message));
+el("reset").onclick = () => { localStorage.removeItem(STORAGE_KEY);
+  el("report").textContent = "Cleared."; el("failures").innerHTML = ""; el("bar").style.width = "0"; };
+el("download").onclick = () => {
+  const blob = new Blob([JSON.stringify(Object.values(loadSaved()), null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "scamshield-eval-results.json";
+  a.click();
+};
+
+// Some Chromium builds expose a LanguageModel object that merely echoes its
+// input back. It answers availability() and accepts prompts, so an evaluation
+// will happily run to completion against it and produce numbers that mean
+// nothing. Detect it before anyone trusts a result.
+async function detectStub() {
+  try {
+    const s = await LanguageModel.create({ outputLanguage: "en" });
+    const raw = await s.prompt("Reply with the single word OK.");
+    s.destroy();
+    if (/just echoing back|not available in Chromium/i.test(String(raw))) return true;
+  } catch (_) { /* gesture or quota errors are not stub evidence */ }
+  return false;
+}
+
+(async () => {
+  const state = await globalThis.ScamShieldClassifier.onDeviceAvailability();
+  if (state === "available" && (await detectStub())) {
+    setStatus("STUB DETECTED — this browser has no real on-device model; it echoes input back. " +
+              "Results here would be meaningless. Run this page in Chrome 138+ instead.");
+    el("run").disabled = true;
+    el("resume").disabled = true;
+    return;
+  }
+  setStatus("On-device model: " + state + (state === "available"
+    ? " — ready. Press Run evaluation."
+    : " — press Run; the model will download first (a few GB, one time)."));
+  report(loadSaved());
+})();
+</script>

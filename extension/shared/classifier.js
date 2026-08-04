@@ -17,7 +17,29 @@
 (function (root) {
   "use strict";
 
-  const SYSTEM_PROMPT = [
+  // Two prompts, because the on-device context window is not knowable in advance
+  // and differs by Chrome build and hardware. The full prompt is used whenever it
+  // fits; if the model rejects it with QuotaExceededError we fall back to this
+  // compressed one rather than failing the message outright.
+  //
+  // The compact version keeps only the rules that actually change verdicts, and
+  // deliberately does not describe the JSON shape - that is enforced by
+  // responseConstraint, so restating it would waste scarce budget.
+  const SYSTEM_PROMPT_COMPACT = [
+    "Decide if this message is a scam. Most are legitimate: answer safe unless there is",
+    "clear fraud evidence. Missing context is not evidence.",
+    "Safe: receipts for payments already made, order and delivery confirmations, password",
+    "resets, account activation, email verification, recruiter mail, newsletters -",
+    "especially when the sender domain matches the company named.",
+    "Scam: asks you for an OTP, PIN, CVV or password; demands payment to avoid a",
+    "consequence; prize or refund needing a fee; brand whose sender domain does not match;",
+    "stranger asking for money.",
+    "A code sent TO you is normal; asked FROM you is fraud. A completed payment is a",
+    "receipt, not a demand. Use unverified-identity only for a person claiming a",
+    "relationship you cannot check, never for company mail. Plain words, no jargon."
+  ].join(" ");
+
+  const SYSTEM_PROMPT_FULL = [
     "You judge whether a single personal message (email or chat) is a scam.",
     "",
     "You are given the message text plus signals already extracted by deterministic code.",
@@ -109,7 +131,36 @@
     required: ["verdict", "confidence", "redFlags", "reasoning", "recommendedAction"]
   };
 
-  function buildUserPrompt(text, signals, source) {
+  // Only true signals are sent. Listing a dozen "false" lines told the model
+  // nothing while consuming a context window that cannot spare it.
+  function buildUserPromptCompact(text, signals, source) {
+    const notes = [];
+    if (signals.urls && signals.urls.length) notes.push("links: " + signals.urls.join(" "));
+    if (signals.hasCredentialRequest) notes.push("asks for a code/password/remote access");
+    if (signals.hasPaymentAction) notes.push("payment action mentioned");
+    if (signals.hasUrgency) notes.push("urgency language");
+    if (signals.hasThreat) notes.push("threats or legal pressure");
+    if (signals.hasReward) notes.push("prize/reward framing");
+    if (signals.hasChainRequest) notes.push("asks to forward to others");
+    if (signals.hasIdentityClaim) notes.push("claims an identity or relationship");
+    if (signals.brandDomainMismatch) notes.push("SENDER DOMAIN DOES NOT MATCH THE BRAND CLAIMED");
+    if (signals.senderDomainAligned === true) notes.push("sender domain matches the company named");
+    if (signals.senderIsUnknown) notes.push("sender not in contacts");
+
+    const preview = source === "gmail-inbox"
+      ? "This is only a subject and truncated preview, not the full message. Judge safe unless the fragment itself shows fraud.\n"
+      : "";
+
+    // Nano's whole context is roughly 1800 characters, shared with the system
+    // prompt and the response. Scam signals almost always appear near the top of
+    // a message, so the opening is what gets kept.
+    const body = text.length > 600 ? text.slice(0, 600) + " […]" : text;
+
+    return preview + "MESSAGE:\n" + body +
+      (notes.length ? "\n\nNOTED: " + notes.join("; ") : "");
+  }
+
+  function buildUserPromptFull(text, signals, source) {
     const list = (arr) => (arr && arr.length ? arr.join(", ") : "none");
 
     // A list row is a sender line, a subject and a truncated snippet - far less
@@ -196,15 +247,17 @@
   // prompt every time. Build one base session and clone it per classification,
   // which is the documented pattern and keeps each request's context isolated
   // so one message can never influence the verdict on the next.
-  let basePromise = null;
+  // One base session per prompt variant, cloned per classification.
+  const baseSessions = { full: null, compact: null };
 
-  function getBaseSession() {
-    if (!basePromise) {
+  function getBaseSession(variant) {
+    if (!baseSessions[variant]) {
       const api = findLanguageModel();
       if (!api) return Promise.reject(new Error("Chrome's built-in AI is not available."));
-      basePromise = api
+      const system = variant === "full" ? SYSTEM_PROMPT_FULL : SYSTEM_PROMPT_COMPACT;
+      baseSessions[variant] = api
         .create({
-          initialPrompts: [{ role: "system", content: SYSTEM_PROMPT }],
+          initialPrompts: [{ role: "system", content: system }],
           // Chrome warns that omitting this degrades output quality and skips
           // its output-safety attestation.
           outputLanguage: "en",
@@ -212,30 +265,59 @@
           topK: 3
         })
         .catch((err) => {
-          basePromise = null; // allow a later retry
+          baseSessions[variant] = null; // allow a later retry
           throw err;
         });
     }
-    return basePromise;
+    return baseSessions[variant];
   }
 
-  async function classifyOnDevice(text, signals, source) {
-    const base = await getBaseSession();
+  function isQuotaError(err) {
+    return err && (err.name === "QuotaExceededError" || /too large/i.test(err.message || ""));
+  }
+
+  // Once the full prompt has been rejected on this device, stop paying the cost
+  // of trying it on every subsequent message.
+  let fullPromptFits = true;
+
+  async function attempt(variant, text, signals, source) {
+    const base = await getBaseSession(variant);
     const session = typeof base.clone === "function" ? await base.clone() : base;
+    const build = variant === "full" ? buildUserPromptFull : buildUserPromptCompact;
     try {
-      const raw = await session.prompt(buildUserPrompt(text, signals, source), {
+      const raw = await session.prompt(build(text, signals, source), {
         responseConstraint: RESPONSE_SCHEMA
       });
-      return { ...parseResponse(raw), provider: "on-device" };
+      return { ...parseResponse(raw), provider: "on-device", promptVariant: variant };
     } finally {
       if (session !== base && typeof session.destroy === "function") session.destroy();
     }
   }
 
+  async function classifyOnDevice(text, signals, source) {
+    if (fullPromptFits) {
+      try {
+        return await attempt("full", text, signals, source);
+      } catch (err) {
+        if (!isQuotaError(err)) throw err;
+        // The device's context window cannot hold the detailed prompt. Note it
+        // once and use the compressed one from here on.
+        fullPromptFits = false;
+        console.warn(
+          "[ScamShield] full prompt exceeds this device's context window; " +
+            "falling back to the compact prompt for all messages."
+        );
+      }
+    }
+    return attempt("compact", text, signals, source);
+  }
+
   root.ScamShieldClassifier = {
-    SYSTEM_PROMPT,
+    SYSTEM_PROMPT_FULL,
+    SYSTEM_PROMPT_COMPACT,
     RESPONSE_SCHEMA,
-    buildUserPrompt,
+    buildUserPromptFull,
+    buildUserPromptCompact,
     parseResponse,
     findLanguageModel,
     onDeviceAvailability,
