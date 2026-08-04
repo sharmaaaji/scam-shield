@@ -54,7 +54,58 @@ constructed specifically to punish naive signal-matching (urgency + a link + a
 rupee amount appears in both halves of the set) — but a genuinely rigorous
 evaluation would use a public labeled corpus or real reported-scam data.
 
-## Measured baseline — full pipeline on Gemini Nano, 4 Aug 2026
+## Final measured result — full pipeline on Gemini Nano, 4 Aug 2026
+
+105 of 105 scored, no errors.
+
+| | |
+|---|---|
+| Accuracy | **0.990** |
+| Precision | 0.980 |
+| Recall (catch rate) | **1.000** — 50 of 50 scams |
+| F1 | 0.990 |
+| False-positive rate | **1.8%** |
+| Hard-negative FP rate | **3.3% — 1 of 30** |
+| Resolved by Tier 0, no model | 39.0%, **0 of 50 scams leaked** |
+
+### Read this before quoting those numbers
+
+**This is a development-set result, not a held-out one.** Three of the rules that
+produced it were written specifically to fix failures observed *in this dataset*
+(a password-reset notice, a 2FA change notice, and a payment receipt whose
+decimal point broke a regex). That is training on the test set, and it means
+0.990 overstates real-world performance by an unknown margin.
+
+An honest generalisation estimate requires a fresh set of messages that no rule
+was ever tuned against. Until that exists, quote this figure as what it is: the
+accuracy of this code on the data used to develop it.
+
+### Progression across the three valid runs
+
+| | Run 1 | Run 2 | Run 3 |
+|---|---|---|---|
+| Accuracy | 0.923 | 0.952 | 0.990 |
+| Recall | 0.959 | 0.959 | 1.000 |
+| False-positive rate | 10.9% | 5.5% | 1.8% |
+| Hard-negative FP | 20.0% | 10.0% | 3.3% |
+| Tier 0 bypass | 26.0% | 31.7% | 39.0% |
+
+Run 1 → 2 moved the bank/security notifications the model confidently misjudged
+into deterministic rules. Run 2 → 3 fixed a regex that stopped at decimal points,
+added two more anti-phishing markers, and lowered the display threshold for the
+softer "suspicious" label from 0.75 to 0.70 — which recovered two genuine scams
+the model had judged correctly but that the cutoff had hidden.
+
+### The one remaining misclassification, left deliberately unfixed
+
+A genuine Amazon delivery notice with a tracking link, judged `suspicious` at
+0.70 with the reasoning *"it's unusual to track a package via a link"* — which
+is simply wrong. A Tier 0 rule for delivery notifications would take this to
+zero misclassifications, and it has not been added on purpose: it would be a
+fourth rule fitted to this dataset, and a perfect score on data you tuned
+against is not evidence of anything.
+
+## Earlier baseline (superseded)
 
 First complete end-to-end run: Tier 0 → on-device Gemini Nano → display
 thresholds, 104 of 105 scored (1 model error).

@@ -81,12 +81,24 @@ would cost an inference the reader never benefits from. Tier-1 calls are also qu
 and run one at a time, because firing dozens concurrently at one local model starves
 them all.
 
-### Measured on the 100-message test set
+### Measured on the 105-message test set
+
+Full pipeline, on-device Gemini Nano, 105 of 105 scored:
 
 | | |
 |---|---|
-| Resolved with no model call | **27%** |
+| Accuracy | **0.990** |
+| Recall (scams caught) | **1.000** — 50 of 50 |
+| False-positive rate | **1.8%** |
+| Hard-negative FP rate | **3.3%** — 1 of 30 scam-lookalikes |
+| Resolved with no model call | **39%** |
 | Scams wrongly cleared by the fast path | **0 / 50** |
+
+**This is a development-set figure, not a held-out one** — three of the rules were
+written to fix failures observed in this same dataset, so it overstates real-world
+performance by an unknown margin. See [`eval/README.md`](eval/README.md) for the
+full progression, the reasoning behind each change, and the one misclassification
+left deliberately unfixed.
 
 The first implementation leaked **2 of 50 scams**. Both shared one root cause:
 messages that *refer* to a link without containing a parseable URL — *"download the
