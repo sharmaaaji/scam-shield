@@ -43,8 +43,22 @@
 <div class="card"><pre id="report">No results yet.</pre></div>
 <div class="card"><div id="failures"></div></div>
 
-<script src="../extension/shared/triage.js?v=3"></script>
-<script src="../extension/shared/classifier.js?v=3"></script>
+<script>
+// Load the shipping modules with a per-load cache-buster. A static version
+// string does not work: it stops changing the moment the underlying file is
+// edited again, and the page silently measures a stale build.
+window.__modulesReady = (async () => {
+  for (const src of ["../extension/shared/triage.js", "../extension/shared/classifier.js"]) {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = src + "?t=" + Date.now() + "-" + Math.random().toString(36).slice(2);
+      s.onload = resolve;
+      s.onerror = () => reject(new Error("failed to load " + src));
+      document.head.appendChild(s);
+    });
+  }
+})();
+</script>
 <script>
 const STORAGE_KEY = "scamshield-eval-results";
 
@@ -237,7 +251,18 @@ async function detectStub() {
   return false;
 }
 
+// The build this page expects. If the loaded triage.js reports anything else,
+// the browser served a cached copy and any numbers produced would describe code
+// that is no longer the code.
+const EXPECTED_VERSION = "2026-08-04-legit-notification-rules";
+
 (async () => {
+  try { await window.__modulesReady; } catch (e) {
+    setStatus("Failed to load modules: " + e.message);
+    el("run").disabled = true; el("resume").disabled = true;
+    return;
+  }
+
   // Fail loudly and specifically rather than with a bare "undefined is not an
   // object". The two ways this page gets opened wrong are a browser without
   // Chrome's built-in AI, and file:// (where fetch of the dataset is blocked).
@@ -246,6 +271,15 @@ async function detectStub() {
     el("run").disabled = true; el("resume").disabled = true;
     return;
   }
+  const loaded = globalThis.ScamShieldTriage.VERSION || "(none)";
+  if (loaded !== EXPECTED_VERSION) {
+    setStatus('STALE CODE — loaded triage build "' + loaded + '", expected "' +
+              EXPECTED_VERSION + '". Hard-reload with Cmd+Shift+R. Refusing to run: ' +
+              "results would describe code that is no longer the code.");
+    el("run").disabled = true; el("resume").disabled = true;
+    return;
+  }
+
   if (location.protocol === "file:") {
     setStatus("Opened as a file:// page. Browsers block loading dataset.json this way. " +
               "Run:  python3 -m http.server 8765   from the scam-shield folder, then open " +
@@ -269,7 +303,7 @@ async function detectStub() {
     el("resume").disabled = true;
     return;
   }
-  setStatus("On-device model: " + state + (state === "available"
+  setStatus("Build " + loaded + " · on-device model: " + state + (state === "available"
     ? " — ready. Press Run evaluation."
     : " — press Run; the model will download first (a few GB, one time)."));
   report(loadSaved());

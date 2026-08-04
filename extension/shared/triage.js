@@ -390,5 +390,16 @@
     return { tier: "model", escalate: true, signals, triggeredCount: triggered };
   }
 
-  root.ScamShieldTriage = { extractSignals, triage, detectBrandDomainMismatch };
+  // Bumped whenever the rules change. The evaluation page displays it and
+  // refuses to run on an unexpected value - twice now a measurement has been
+  // taken against a cached older build and read as a real result.
+  const VERSION = "2026-08-04-legit-notification-rules";
+
+  root.ScamShieldTriage = {
+    VERSION,
+    extractSignals,
+    triage,
+    detectBrandDomainMismatch,
+    isRecognisedLegitimateNotification
+  };
 })(typeof globalThis !== "undefined" ? globalThis : this);
